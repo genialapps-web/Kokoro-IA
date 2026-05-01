@@ -46,6 +46,7 @@
         let userUID = null;
         let personajeData = null;
         let unsubscribeChat = null;
+        let unsubscribeUser = null;
         let isTyping = false;
 
         onAuthStateChanged(auth, (user) => {
@@ -53,10 +54,33 @@
                 userUID = user.uid; 
                 cargarPersonaje();
                 escucharAfinidad(); 
+                escucharDatosUsuario();
             } else {
                 window.location.href = 'auth.html';
             }
         });
+
+        // Escucha en tiempo real el documento del usuario para mostrar los contadores
+        function escucharDatosUsuario() {
+            if (!userUID) return;
+            if (unsubscribeUser) unsubscribeUser();
+
+            unsubscribeUser = onSnapshot(doc(db, "usuarios", userUID), (docSnap) => {
+                if (docSnap.exists()) {
+                    const uData = docSnap.data();
+                    const freeMsgCounter = document.getElementById('free-msg-counter');
+                    const coinCounter = document.getElementById('coin-counter');
+
+                    if (uData.isPremium) {
+                        freeMsgCounter.innerText = "∞ Ilimitado";
+                        coinCounter.innerText = "💎 ∞";
+                    } else {
+                        freeMsgCounter.innerText = (uData.freeMessages || 0) + " Libres";
+                        coinCounter.innerText = "💎 " + (uData.coins || 0);
+                    }
+                }
+            });
+        }
 
         async function cargarPersonaje() {
             if (!characterId) return;
@@ -154,14 +178,12 @@
                     const coins = uData.coins || 0;
                     
                     if (freeMsgs > 0) {
-                        // Si hay mensajes gratis, restamos 1 del contador de mensajes gratuitos
                         await updateDoc(userRef, { freeMessages: increment(-1) });
                     } else if (coins >= 1) {
-                        // Si no hay mensajes gratis pero hay diamantes, restamos 1 diamante
                         await updateDoc(userRef, { coins: increment(-1) });
                     } else {
                         alert("¡No tienes mensajes gratuitos ni diamantes! Por favor, recarga energía en el Bazar.");
-                        return; // Se detiene el envío
+                        return;
                     }
                 }
             }
@@ -251,12 +273,8 @@
             }
 
             try {
-                // Descontar diamantes primero
                 await updateDoc(userRef, { coins: increment(-costo) });
-
                 const currentApiKey = await getOpenAiKey();
-
-                // Obtener prompt de apariencia del Admin
                 const masterLook = personajeData.physicalPrompt || "Anime girl, high quality";
 
                 const imgResponse = await fetch("https://api.openai.com/v1/images/generations", {
@@ -266,7 +284,7 @@
                         model: "dall-e-3",
                         prompt: `Masterpiece, high quality anime style art. FULL BODY shot of a character with this EXACT appearance: ${masterLook}. Situation: ${accionPrompt}. Cinematic lighting, vibrant colors, detailed background.`,
                         n: 1,
-                        size: "1024x1792" // Formato vertical cuerpo completo
+                        size: "1024x1792"
                     })
                 });
 
@@ -276,7 +294,6 @@
                 await addDoc(collection(db, "usuarios", userUID, "chats", characterId, "mensajes"), { 
                     role: 'assistant', type: 'image', content: url, createdAt: new Date() 
                 });
-
             } catch (err) { console.error(err); }
         }
 
@@ -312,22 +329,32 @@
 </head>
 <body class="flex flex-col">
     
-    <header class="glass-header p-4 flex justify-between items-center z-50">
-        <div class="flex items-center gap-3">
-            <button onclick="window.location.href='index.html'" class="text-white/70 text-2xl pr-2">❮</button>
+    <header class="glass-header p-3 flex justify-between items-center z-50">
+        <div class="flex items-center gap-2">
+            <button onclick="window.location.href='index.html'" class="text-white/70 text-xl pr-1">❮</button>
             <div class="relative">
-                <img id="ia-img" src="" class="w-11 h-11 rounded-full object-cover border-2 border-white/20">
-                <div class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-black rounded-full"></div>
+                <img id="ia-img" src="" class="w-10 h-10 rounded-full object-cover border-2 border-white/20">
+                <div class="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-black rounded-full"></div>
             </div>
             <div>
-                <h2 id="ia-name" class="text-[15px] font-extrabold text-white leading-none">...</h2>
-                <div class="flex items-center gap-2 mt-1.5">
-                    <span class="text-[9px] font-bold text-yellow-500 uppercase tracking-widest">Afinidad</span>
+                <h2 id="ia-name" class="text-[13px] font-extrabold text-white leading-none">...</h2>
+                <div class="flex items-center gap-1.5 mt-1">
+                    <span class="text-[8px] font-bold text-yellow-500 uppercase tracking-wider">Afinidad</span>
                     <div class="barra-afinidad"><div id="afinidad-bar" class="barra-fill"></div></div>
                 </div>
             </div>
         </div>
-        <button onclick="toggleRegalos()" class="bg-white/10 p-2.5 rounded-full active:scale-90 transition">🎁</button>
+
+        <div class="flex items-center gap-1.5">
+            <div class="bg-white/5 border border-white/10 px-2 py-1 rounded-full flex items-center gap-1">
+                <span class="text-[10px]">💬</span>
+                <span id="free-msg-counter" class="text-[8px] font-black text-yellow-500 uppercase tracking-tighter">Cargando...</span>
+            </div>
+            <div class="bg-white/5 border border-white/10 px-2 py-1 rounded-full flex items-center gap-1">
+                <span id="coin-counter" class="text-[8px] font-black text-yellow-500 uppercase tracking-tighter">Cargando...</span>
+            </div>
+            <button onclick="toggleRegalos()" class="bg-white/10 p-2 rounded-full active:scale-95 transition text-xs">🎁</button>
+        </div>
     </header>
 
     <div id="gift-menu" class="hidden absolute bottom-28 left-4 right-4 bg-slate-900/95 backdrop-blur-3xl p-6 rounded-[2.5rem] z-[100] border border-white/10 shadow-2xl">
