@@ -9,7 +9,7 @@
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, doc, getDoc, collection, addDoc, query, orderBy, onSnapshot, limit, updateDoc, increment, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, collection, addDoc, query, orderBy, onSnapshot, limit, updateDoc, increment, setDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         const firebaseConfig = {
@@ -72,7 +72,7 @@
                     const coinCounter = document.getElementById('coin-counter');
 
                     if (uData.isPremium) {
-                        freeMsgCounter.innerText = "∞ Ilimitado";
+                        freeMsgCounter.innerText = "∞";
                         coinCounter.innerText = "💎 ∞";
                     } else {
                         freeMsgCounter.innerText = (uData.freeMessages || 0) + " Libres";
@@ -132,11 +132,11 @@
             
             if (isGift) {
                 return `
-                <div class="flex justify-center my-6 animate-fadeIn">
-                    <div class="bg-gradient-to-tr from-yellow-400 to-amber-600 p-[1px] rounded-3xl shadow-lg shadow-yellow-500/20">
-                        <div class="bg-black/80 backdrop-blur-xl px-6 py-4 rounded-3xl text-center">
-                            <span class="text-4xl block mb-2">${m.icon}</span>
-                            <p class="text-[9px] font-black uppercase tracking-tighter text-yellow-500">Regalaste ${m.content}</p>
+                <div class="flex justify-center my-4 animate-fadeIn">
+                    <div class="bg-gradient-to-tr from-yellow-400 to-amber-600 p-[1px] rounded-2xl shadow-lg shadow-yellow-500/20">
+                        <div class="bg-black/80 backdrop-blur-xl px-4 py-3 rounded-2xl text-center">
+                            <span class="text-3xl block mb-1">${m.icon}</span>
+                            <p class="text-[8px] font-black uppercase tracking-tighter text-yellow-500">Regalaste ${m.content}</p>
                         </div>
                     </div>
                 </div>`;
@@ -145,17 +145,17 @@
             if (m.type === 'image') {
                 return `
                 <div class="flex justify-start mb-3 animate-fadeIn px-2">
-                    <div class="bg-white/10 p-2 rounded-2xl border border-white/10 backdrop-blur-md shadow-md max-w-[85%]">
-                        <img src="${m.content}" class="rounded-xl w-full h-auto object-cover border border-white/5 shadow-2xl">
-                        <p class="text-[9px] text-yellow-500 font-bold uppercase mt-2 text-center tracking-widest">Foto generada (100💎)</p>
+                    <div class="bg-white/10 p-1.5 rounded-xl border border-white/10 backdrop-blur-md shadow-md max-w-[80%]">
+                        <img src="${m.content}" class="rounded-lg w-full h-auto object-cover border border-white/5 shadow-2xl">
+                        <p class="text-[8px] text-yellow-500 font-bold uppercase mt-1.5 text-center tracking-widest">Foto generada (100💎)</p>
                     </div>
                 </div>`;
             }
 
             return `
-                <div class="flex ${isUser ? 'justify-end' : 'justify-start'} mb-3 animate-fadeIn px-2">
-                    <div class="relative ${isUser ? 'bg-blue-600 text-white rounded-2xl rounded-tr-sm' : 'bg-white/10 text-white backdrop-blur-md border border-white/10 rounded-2xl rounded-tl-sm'} px-4 py-2.5 max-w-[85%] shadow-md">
-                        <p class="text-[15px] leading-snug">${m.content}</p>
+                <div class="flex ${isUser ? 'justify-end' : 'justify-start'} mb-2.5 animate-fadeIn px-2">
+                    <div class="relative ${isUser ? 'bg-blue-600 text-white rounded-xl rounded-tr-sm' : 'bg-white/10 text-white backdrop-blur-md border border-white/10 rounded-xl rounded-tl-sm'} px-3 py-2 max-w-[80%] shadow-md">
+                        <p class="text-[13px] leading-snug">${m.content}</p>
                     </div>
                 </div>`;
         }
@@ -166,28 +166,36 @@
             const msg = input.value.trim();
             if (!msg || !userUID || !characterId) return;
 
-            // --- LÓGICA DE VERIFICACIÓN DE MENSAJES Y ENERGÍA ---
             const userRef = doc(db, "usuarios", userUID);
-            const userSnap = await getDoc(userRef);
-            
-            if (userSnap.exists()) {
-                const uData = userSnap.data();
-                
-                if (!uData.isPremium) {
-                    const freeMsgs = uData.freeMessages || 0;
-                    const coins = uData.coins || 0;
-                    
-                    if (freeMsgs > 0) {
-                        await updateDoc(userRef, { freeMessages: increment(-1) });
-                    } else if (coins >= 1) {
-                        await updateDoc(userRef, { coins: increment(-1) });
-                    } else {
-                        alert("¡No tienes mensajes gratuitos ni diamantes! Por favor, recarga energía en el Bazar.");
-                        return;
+
+            try {
+                // Usamos transacciones atómicas de Firestore para evitar condiciones de carrera (envíos simultáneos)
+                await runTransaction(db, async (transaction) => {
+                    const userSnap = await transaction.get(userRef);
+                    if (!userSnap.exists()) {
+                        throw new Error("Usuario no encontrado en la base de datos.");
                     }
-                }
+
+                    const uData = userSnap.data();
+
+                    if (!uData.isPremium) {
+                        const freeMsgs = uData.freeMessages || 0;
+                        const coins = uData.coins || 0;
+
+                        if (freeMsgs > 0) {
+                            transaction.update(userRef, { freeMessages: freeMsgs - 1 });
+                        } else if (coins >= 1) {
+                            transaction.update(userRef, { coins: coins - 1 });
+                        } else {
+                            throw new Error("¡No tienes mensajes gratuitos ni diamantes! Por favor, recarga energía en el Bazar.");
+                        }
+                    }
+                });
+            } catch (error) {
+                alert(error.message);
+                return;
             }
-            
+
             input.value = '';
             try {
                 const msgPath = collection(db, "usuarios", userUID, "chats", characterId, "mensajes");
@@ -317,90 +325,90 @@
     <style>
         body { background: #000; color: white; font-family: 'Plus Jakarta Sans', sans-serif; height: 100vh; overflow: hidden; }
         .glass-header { background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
-        .chat-container { height: calc(100vh - 160px); overflow-y: auto; background-size: cover; background-position: center; transition: all 0.5s ease; }
-        .barra-afinidad { height: 4px; background: rgba(255,255,255,0.1); border-radius: 10px; width: 80px; overflow: hidden; }
+        .chat-container { height: calc(100vh - 130px); overflow-y: auto; background-size: cover; background-position: center; transition: all 0.3s ease; }
+        .barra-afinidad { height: 3.5px; background: rgba(255,255,255,0.1); border-radius: 10px; width: 65px; overflow: hidden; }
         .barra-fill { height: 100%; background: linear-gradient(90deg, #eab308, #f59e0b); width: 0%; transition: width 0.8s ease; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fadeIn { animation: fadeIn 0.3s ease-out forwards; }
         ::-webkit-scrollbar { display: none; }
         .gift-card { background: rgba(255,255,255,0.05); transition: transform 0.2s; }
-        .gift-card:active { transform: scale(0.9); }
+        .gift-card:active { transform: scale(0.95); }
     </style>
 </head>
-<body class="flex flex-col">
+<body class="flex flex-col text-sm">
     
-    <header class="glass-header p-3 flex justify-between items-center z-50">
-        <div class="flex items-center gap-2">
-            <button onclick="window.location.href='index.html'" class="text-white/70 text-xl pr-1">❮</button>
+    <header class="glass-header p-2.5 flex justify-between items-center z-50">
+        <div class="flex items-center gap-1.5">
+            <button onclick="window.location.href='index.html'" class="text-white/70 text-lg pr-1">❮</button>
             <div class="relative">
-                <img id="ia-img" src="" class="w-10 h-10 rounded-full object-cover border-2 border-white/20">
-                <div class="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-black rounded-full"></div>
+                <img id="ia-img" src="" class="w-8 h-8 rounded-full object-cover border-2 border-white/20">
+                <div class="absolute bottom-0 right-0 w-2 h-2 bg-green-500 border border-black rounded-full"></div>
             </div>
             <div>
-                <h2 id="ia-name" class="text-[13px] font-extrabold text-white leading-none">...</h2>
-                <div class="flex items-center gap-1.5 mt-1">
-                    <span class="text-[8px] font-bold text-yellow-500 uppercase tracking-wider">Afinidad</span>
+                <h2 id="ia-name" class="text-[11px] font-extrabold text-white leading-none">...</h2>
+                <div class="flex items-center gap-1 mt-1">
+                    <span class="text-[7px] font-bold text-yellow-500 uppercase tracking-wider">Afinidad</span>
                     <div class="barra-afinidad"><div id="afinidad-bar" class="barra-fill"></div></div>
                 </div>
             </div>
         </div>
 
-        <div class="flex items-center gap-1.5">
-            <div class="bg-white/5 border border-white/10 px-2 py-1 rounded-full flex items-center gap-1">
-                <span class="text-[10px]">💬</span>
-                <span id="free-msg-counter" class="text-[8px] font-black text-yellow-500 uppercase tracking-tighter">Cargando...</span>
+        <div class="flex items-center gap-1 text-[8px]">
+            <div class="bg-white/5 border border-white/10 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                <span>💬</span>
+                <span id="free-msg-counter" class="font-black text-yellow-500 uppercase tracking-tighter">...</span>
             </div>
-            <div class="bg-white/5 border border-white/10 px-2 py-1 rounded-full flex items-center gap-1">
-                <span id="coin-counter" class="text-[8px] font-black text-yellow-500 uppercase tracking-tighter">Cargando...</span>
+            <div class="bg-white/5 border border-white/10 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                <span id="coin-counter" class="font-black text-yellow-500 uppercase tracking-tighter">...</span>
             </div>
-            <button onclick="toggleRegalos()" class="bg-white/10 p-2 rounded-full active:scale-95 transition text-xs">🎁</button>
+            <button onclick="toggleRegalos()" class="bg-white/10 p-1.5 rounded-full active:scale-95 transition text-[10px]">🎁</button>
         </div>
     </header>
 
-    <div id="gift-menu" class="hidden absolute bottom-28 left-4 right-4 bg-slate-900/95 backdrop-blur-3xl p-6 rounded-[2.5rem] z-[100] border border-white/10 shadow-2xl">
-        <h3 class="text-center text-[10px] font-black tracking-[0.2em] text-white/40 mb-6 uppercase">Enviar un detalle</h3>
-        <div class="grid grid-cols-3 gap-4">
-            <div onclick="enviarRegalo('Corazón', '❤️', 10)" class="gift-card p-4 rounded-3xl text-center">
-                <span class="text-2xl">❤️</span><p class="text-[10px] font-bold mt-1 text-yellow-500">10</p>
+    <div id="gift-menu" class="hidden absolute bottom-20 left-3 right-3 bg-slate-900/95 backdrop-blur-3xl p-4 rounded-3xl z-[100] border border-white/10 shadow-2xl">
+        <h3 class="text-center text-[8px] font-black tracking-widest text-white/40 mb-4 uppercase">Enviar un detalle</h3>
+        <div class="grid grid-cols-3 gap-2.5">
+            <div onclick="enviarRegalo('Corazón', '❤️', 10)" class="gift-card p-3 rounded-2xl text-center">
+                <span class="text-xl">❤️</span><p class="text-[8px] font-bold mt-0.5 text-yellow-500">10</p>
             </div>
-            <div onclick="enviarRegalo('Bebida', '🍹', 30)" class="gift-card p-4 rounded-3xl text-center">
-                <span class="text-2xl">🍹</span><p class="text-[10px] font-bold mt-1 text-yellow-500">30</p>
+            <div onclick="enviarRegalo('Bebida', '🍹', 30)" class="gift-card p-3 rounded-2xl text-center">
+                <span class="text-xl">🍹</span><p class="text-[8px] font-bold mt-0.5 text-yellow-500">30</p>
             </div>
-            <div onclick="enviarRegalo('Rosa', '🌹', 50)" class="gift-card p-4 rounded-3xl text-center">
-                <span class="text-2xl">🌹</span><p class="text-[10px] font-bold mt-1 text-yellow-500">50</p>
+            <div onclick="enviarRegalo('Rosa', '🌹', 50)" class="gift-card p-3 rounded-2xl text-center">
+                <span class="text-xl">🌹</span><p class="text-[8px] font-bold mt-0.5 text-yellow-500">50</p>
             </div>
-            <div onclick="enviarRegalo('Peluche', '🧸', 150)" class="gift-card p-4 rounded-3xl text-center">
-                <span class="text-2xl">🧸</span><p class="text-[10px] font-bold mt-1 text-yellow-500">150</p>
+            <div onclick="enviarRegalo('Peluche', '🧸', 150)" class="gift-card p-3 rounded-2xl text-center">
+                <span class="text-xl">🧸</span><p class="text-[8px] font-bold mt-0.5 text-yellow-500">150</p>
             </div>
-            <div onclick="enviarRegalo('Anillo', '💍', 300)" class="gift-card p-4 rounded-3xl text-center">
-                <span class="text-2xl">💍</span><p class="text-[10px] font-bold mt-1 text-yellow-500">300</p>
+            <div onclick="enviarRegalo('Anillo', '💍', 300)" class="gift-card p-3 rounded-2xl text-center">
+                <span class="text-xl">💍</span><p class="text-[8px] font-bold mt-0.5 text-yellow-500">300</p>
             </div>
-            <div onclick="enviarRegalo('Diamante', '💎', 500)" class="gift-card p-4 rounded-3xl text-center">
-                <span class="text-2xl">💎</span><p class="text-[10px] font-bold mt-1 text-yellow-500">500</p>
+            <div onclick="enviarRegalo('Diamante', '💎', 500)" class="gift-card p-3 rounded-2xl text-center">
+                <span class="text-2xl">💎</span><p class="text-[8px] font-bold mt-0.5 text-yellow-500">500</p>
             </div>
         </div>
-        <button onclick="toggleRegalos()" class="w-full mt-6 text-[11px] font-black text-slate-500 uppercase tracking-widest">Cerrar</button>
+        <button onclick="toggleRegalos()" class="w-full mt-5 text-[9px] font-black text-slate-500 uppercase tracking-widest">Cerrar</button>
     </div>
 
-    <main id="chat-box" class="chat-container p-4 space-y-2 flex flex-col"></main>
+    <main id="chat-box" class="chat-container p-3 space-y-1.5 flex flex-col"></main>
 
-    <div id="typing" class="hidden px-6 py-3 flex gap-1.5 items-center">
+    <div id="typing" class="hidden px-4 py-2 flex gap-1 items-center">
         <div class="flex gap-1">
-            <span class="w-1.5 h-1.5 bg-white/30 rounded-full animate-bounce"></span>
-            <span class="w-1.5 h-1.5 bg-white/30 rounded-full animate-bounce [animation-delay:0.2s]"></span>
-            <span class="w-1.5 h-1.5 bg-white/30 rounded-full animate-bounce [animation-delay:0.4s]"></span>
+            <span class="w-1 h-1 bg-white/30 rounded-full animate-bounce"></span>
+            <span class="w-1 h-1 bg-white/30 rounded-full animate-bounce [animation-delay:0.2s]"></span>
+            <span class="w-1 h-1 bg-white/30 rounded-full animate-bounce [animation-delay:0.4s]"></span>
         </div>
-        <span class="text-[10px] font-bold text-white/20 uppercase tracking-widest ml-2">Escribiendo...</span>
+        <span class="text-[8px] font-bold text-white/20 uppercase tracking-widest ml-1">Escribiendo...</span>
     </div>
 
-    <footer class="p-4 bg-black/80 backdrop-blur-2xl border-t border-white/5">
-        <div class="flex items-center gap-3 max-w-5xl mx-auto">
+    <footer class="p-2.5 bg-black/80 backdrop-blur-2xl border-t border-white/5">
+        <div class="flex items-center gap-2 max-w-5xl mx-auto">
             <div class="flex-1 relative">
                 <input id="msg-input" type="text" placeholder="Escribe algo..." 
-                    class="w-full bg-white/5 border border-white/10 p-3.5 px-6 rounded-full text-[15px] outline-none focus:border-blue-500/50 transition-all" 
+                    class="w-full bg-white/5 border border-white/10 p-2.5 px-4 rounded-full text-[13px] outline-none focus:border-blue-500/50 transition-all" 
                     onkeypress="if(event.key === 'Enter') enviarMensaje()">
             </div>
-            <button onclick="enviarMensaje()" class="bg-blue-600 hover:bg-blue-500 text-white p-3.5 px-6 rounded-full font-bold text-sm transition-all active:scale-95 shadow-lg shadow-blue-600/20">
+            <button onclick="enviarMensaje()" class="bg-blue-600 hover:bg-blue-500 text-white p-2.5 px-4 rounded-full font-bold text-[11px] transition-all active:scale-95 shadow-lg shadow-blue-600/20">
                 Enviar
             </button>
         </div>
