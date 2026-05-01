@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bazar | Kokoro AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <script src="https://www.paypal.com/sdk/js?client-id=AbbqEcSZt4F1hDCiJTKdcnuBi-4uDeR9u7PSTKlyl1WtmXpPTJRElN_5zWKLdEO2aZZCjH331jksP1-N&currency=USD"></script>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, doc, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCSQw7b4_OJpxZRP8Tu9shvpB4nE-xwmQc",
+            authDomain: "smm-proyecto.firebaseapp.com",
+            projectId: "smm-proyecto",
+            storageBucket: "smm-proyecto.firebasestorage.app",
+            messagingSenderId: "696404417299",
+            appId: "1:696404417299:web:1c3982babc049a18f398e6"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        let userUID = null;
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) userUID = user.uid;
+        });
+
+        window.iniciarPago = function(tipo, precio, monto) {
+            if (!userUID) return window.location.href = 'auth.html';
+            
+            const modal = document.getElementById('paypal-modal');
+            const itemName = document.getElementById('modal-item-name');
+            const itemPrice = document.getElementById('modal-item-price');
+
+            if (tipo === 'gold') {
+                itemName.innerText = "Protocolo Gold";
+            } else {
+                itemName.innerText = `${monto} Diamantes`;
+            }
+            itemPrice.innerText = `$${precio.toFixed(2)} USD`;
+
+            modal.classList.remove('hidden');
+
+            document.getElementById('paypal-button-container').innerHTML = '';
+            
+            // Renderizar botón de PayPal
+            paypal.Buttons({
+                createOrder: (data, actions) => {
+                    return actions.order.create({
+                        purchase_units: [{
+                            amount: {
+                                value: precio.toFixed(2)
+                            }
+                        }]
+                    });
+                },
+                onApprove: async (data, actions) => {
+                    await actions.order.capture();
+                    
+                    if (tipo === 'gold') {
+                        const userRef = doc(db, "usuarios", userUID);
+                        await updateDoc(userRef, { isPremium: true });
+                        alert("¡Felicidades! Protocolo Gold Activado. Disfruta el Multiverso sin límites.");
+                    } else {
+                        const userRef = doc(db, "usuarios", userUID);
+                        await updateDoc(userRef, { coins: increment(monto) });
+                        alert(`¡Energía recibida! Se han manifestado ${monto} 💎 en tu cuenta.`);
+                    }
+                    cerrarModal();
+                }
+            }).render('#paypal-button-container');
+        };
+
+        // Función para abrir el DirectLink y otorgar mensajes
+        window.abrirAnuncioDirectLink = async function() {
+            if (!userUID) return window.location.href = 'auth.html';
+            
+            // REEMPLAZA ESTA URL con tu enlace directo de publicidad (ej. Adsterra Direct Link)
+            const directLinkURL = "https://www.profitablecpmratenetwork.com/m5806c853?key=896547d749f25e90eaae01a3e77db0ec";
+            
+            // Abre la publicidad en una nueva pestaña
+            window.open(directLinkURL, '_blank');
+            
+            // Otorgamos los 5 mensajes gratis
+            const userRef = doc(db, "usuarios", userUID);
+            try {
+                await updateDoc(userRef, { 
+                    freeMessages: increment(5) 
+                });
+                alert("¡Anuncio visto! Se han sumado 5 mensajes gratuitos a tu cuenta.");
+            } catch (error) {
+                console.error("Error al actualizar los mensajes gratuitos: ", error);
+                alert("Ocurrió un error, pero el anuncio se abrió correctamente.");
+            }
+        };
+
+        window.cerrarModal = function() {
+            document.getElementById('paypal-modal').classList.add('hidden');
+        };
+    </script>
+    <style>
+        body { background: #010206; font-family: 'Inter', sans-serif; color: white; }
+        .gold-card {
+            background: linear-gradient(145deg, #f59e0b 0%, #92400e 100%);
+            box-shadow: 0 20px 40px -15px rgba(245, 158, 11, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .item-card {
+            background: rgba(255, 255, 255, 0.02);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .item-card:active { transform: scale(0.96); background: rgba(255, 255, 255, 0.05); }
+        .text-glow { text-shadow: 0 0 10px rgba(234, 179, 8, 0.5); }
+        .glass-premium { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.08); }
+    </style>
+</head>
+<body class="p-8 pb-32">
+
+    <header class="mb-12 flex justify-between items-center">
+        <button onclick="window.location.href='index.html'" class="w-12 h-12 flex items-center justify-center bg-white/5 rounded-full text-xl opacity-80 active:scale-90 transition">❮</button>
+        <div class="text-center">
+            <h2 class="text-2xl font-black italic tracking-tighter uppercase">BAZAR <span class="text-yellow-500">KOKORO</span></h2>
+            <p class="text-[8px] text-slate-500 uppercase font-black tracking-[0.4em] opacity-70">Suministros del Multiverso</p>
+        </div>
+        <div class="w-12"></div>
+    </header>
+
+    <div class="max-w-md mx-auto space-y-8">
+        
+        <div onclick="iniciarPago('gold', 6.00, 0)" class="gold-card p-10 rounded-[3rem] text-black relative overflow-hidden cursor-pointer group">
+            <div class="relative z-10">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h3 class="text-3xl font-black italic leading-tight tracking-tighter">PROTOCOLO<br>GOLD</h3>
+                    </div>
+                    <span class="bg-black text-white text-[9px] px-4 py-1.5 rounded-full font-black uppercase tracking-widest shadow-xl">Elite</span>
+                </div>
+                
+                <ul class="mt-6 space-y-2">
+                    <li class="flex items-center text-[10px] font-black uppercase tracking-tight italic opacity-90">
+                        <span class="mr-2">✦</span> Mensajes Ilimitados
+                    </li>
+                    <li class="flex items-center text-[10px] font-black uppercase tracking-tight italic opacity-90">
+                        <span class="mr-2">✦</span> Prioridad en Multiverso
+                    </li>
+                    <li class="flex items-center text-[10px] font-black uppercase tracking-tight italic opacity-90 text-white">
+                        <span class="mr-2 text-black">✦</span> USO ILIMITADO MENSUAL
+                    </li>
+                </ul>
+
+                <div class="mt-8 flex items-baseline gap-2">
+                    <span class="text-5xl font-black tracking-tighter">$6.00</span>
+                    <span class="text-xs font-bold opacity-70">USD/MES</span>
+                </div>
+                
+                <button class="mt-8 w-full bg-black text-white py-5 rounded-[1.8rem] font-black text-[10px] uppercase tracking-[0.2em] shadow-2xl active:scale-95 transition">
+                    Activar Protocolo Gold
+                </button>
+            </div>
+            <span class="absolute -right-6 -bottom-6 text-[12rem] opacity-10 rotate-12 select-none group-hover:scale-110 transition-transform">👑</span>
+        </div>
+
+        <div class="space-y-4">
+            <h3 class="text-[9px] font-black uppercase text-slate-500 tracking-[0.4em] pl-4 italic">Fragmentos de Realidad</h3>
+
+            <div onclick="abrirAnuncioDirectLink()" class="item-card p-7 rounded-[2.5rem] flex justify-between items-center border-purple-500/20 bg-purple-500/[0.03] group mb-4">
+                <div class="flex items-center gap-5">
+                    <div class="w-14 h-14 bg-purple-500/20 rounded-3xl flex items-center justify-center text-2xl shadow-[0_0_20px_rgba(168,85,247,0.2)]">🔗</div>
+                    <div>
+                        <h4 class="font-black text-[11px] uppercase tracking-widest text-purple-400 italic">Energía de Emergencia</h4>
+                        <p class="text-white font-black text-lg leading-tight">5 Mensajes Gratis</p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <span class="text-xl font-black text-purple-400 italic tracking-tighter">OBTENER</span>
+                    <p class="text-[7px] text-purple-400/50 font-bold uppercase tracking-widest mt-1">Con anuncio</p>
+                </div>
+            </div>
+
+            <div onclick="iniciarPago('bolsa', 1.99, 500)" class="item-card p-7 rounded-[2.5rem] flex justify-between items-center group">
+                <div class="flex items-center gap-5">
+                    <div class="w-14 h-14 bg-white/5 rounded-3xl flex items-center justify-center text-2xl group-hover:bg-yellow-500/10 transition">💎</div>
+                    <div>
+                        <h4 class="font-black text-[11px] uppercase tracking-widest text-slate-300 italic">Bolsa de Alma</h4>
+                        <p class="text-yellow-500 font-black text-lg leading-tight">500 Diamantes</p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <span class="text-xl font-black text-white italic tracking-tighter">$1.99</span>
+                    <p class="text-[7px] text-slate-600 font-bold uppercase tracking-widest mt-1">USD</p>
+                </div>
+            </div>
+
+            <div onclick="iniciarPago('cofre', 4.99, 2500)" class="item-card p-7 rounded-[2.5rem] flex justify-between items-center border-yellow-500/20 bg-yellow-500/[0.03] group">
+                <div class="flex items-center gap-5">
+                    <div class="w-14 h-14 bg-yellow-500/20 rounded-3xl flex items-center justify-center text-2xl shadow-[0_0_20px_rgba(234,179,8,0.2)]">💍</div>
+                    <div>
+                        <h4 class="font-black text-[11px] uppercase tracking-widest text-yellow-500 italic">Cofre Infinito</h4>
+                        <p class="text-white font-black text-lg leading-tight">2500 Diamantes</p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <span class="text-xl font-black text-yellow-500 italic tracking-tighter">$4.99</span>
+                    <p class="text-[7px] text-yellow-500/50 font-bold uppercase tracking-widest mt-1">Oferta</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="paypal-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 hidden overflow-y-auto">
+        <div class="flex min-h-screen items-center justify-center p-4 text-center">
+            <div class="glass-premium p-8 rounded-[2.5rem] max-w-sm w-full my-auto border border-white/10 text-center">
+                <h3 class="text-xl font-black italic tracking-tighter text-yellow-500 mb-4">CONFIRMAR PEDIDO</h3>
+                <p id="modal-item-name" class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1"></p>
+                <p id="modal-item-price" class="text-3xl font-black tracking-tighter text-white mb-8"></p>
+                
+                <div id="paypal-button-container" class="w-full flex justify-center"></div>
+                
+                <button onclick="cerrarModal()" class="mt-6 w-full bg-white/5 text-white py-4 rounded-[1.5rem] text-[9px] font-black tracking-widest hover:bg-white/10 transition">
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="mt-20 px-6 text-center space-y-4">
+        <p class="text-[8px] text-slate-600 uppercase font-black tracking-[0.3em] leading-relaxed">
+            Transacciones encriptadas mediante Kokoro Secure Protocol.<br>
+            Puedes gestionar tus suscripciones desde el perfil.
+        </p>
+        <div class="flex justify-center gap-4 opacity-20 grayscale">
+            <span class="text-xs font-bold">VISA</span>
+            <span class="text-xs font-bold">PAYPAL</span>
+            <span class="text-xs font-bold">STRIPE</span>
+        </div>
+    </footer>
+
+</body>
+</html>

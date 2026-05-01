@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acceso | Kokoro AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCSQw7b4_OJpxZRP8Tu9shvpB4nE-xwmQc",
+            authDomain: "smm-proyecto.firebaseapp.com",
+            projectId: "smm-proyecto",
+            storageBucket: "smm-proyecto.firebasestorage.app",
+            messagingSenderId: "696404417299",
+            appId: "1:696404417299:web:1c3982babc049a18f398e6"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        let modoActual = 'login';
+
+        window.cambiarModo = () => {
+            modoActual = modoActual === 'login' ? 'signup' : 'login';
+            const titulo = document.getElementById('auth-title');
+            const btnPrincipal = document.getElementById('btn-main');
+            const toggleText = document.getElementById('toggle-text');
+            const nameField = document.getElementById('name-field');
+
+            if (modoActual === 'signup') {
+                titulo.innerText = 'Crea tu Kokoro';
+                btnPrincipal.innerText = 'Iniciar Invocación';
+                toggleText.innerHTML = '¿Ya eres parte? <span class="text-yellow-500 font-bold underline ml-1">Inicia sesión</span>';
+                nameField.classList.remove('hidden');
+            } else {
+                titulo.innerText = 'Bienvenido de nuevo';
+                btnPrincipal.innerText = 'Entrar al Multiverso';
+                toggleText.innerHTML = '¿Nuevo aquí? <span class="text-yellow-500 font-bold underline ml-1">Crea tu cuenta</span>';
+                nameField.classList.add('hidden');
+            }
+        };
+
+        window.ejecutarAuth = async () => {
+            const email = document.getElementById('email').value;
+            const pass = document.getElementById('pass').value;
+            const name = document.getElementById('name').value;
+            const btn = document.getElementById('btn-main');
+
+            if(!email || !pass) return alert("Por favor, completa tus credenciales.");
+            
+            btn.innerText = "Sincronizando...";
+            btn.disabled = true;
+
+            try {
+                if (modoActual === 'signup') {
+                    const res = await createUserWithEmailAndPassword(auth, email, pass);
+                    await updateProfile(res.user, { displayName: name });
+                    await setDoc(doc(db, "usuarios", res.user.uid), {
+                        username: name || "Explorador",
+                        coins: 1500,
+                        isPremium: false,
+                        createdAt: new Date()
+                    });
+                } else {
+                    await signInWithEmailAndPassword(auth, email, pass);
+                }
+                window.location.href = "index.html";
+            } catch (e) { 
+                alert("Error de acceso: " + e.message); 
+                btn.innerText = modoActual === 'login' ? 'Entrar al Multiverso' : 'Iniciar Invocación';
+                btn.disabled = false;
+            }
+        };
+    </script>
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: radial-gradient(circle at top, #0a0c14 0%, #010206 100%);
+        }
+        .input-focus:focus { border-color: #eab308; box-shadow: 0 0 15px rgba(234, 179, 8, 0.1); }
+        .glass-card { 
+            background: rgba(255, 255, 255, 0.01); 
+            backdrop-filter: blur(25px); 
+            border: 1px solid rgba(255, 255, 255, 0.05); 
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        .text-glow { text-shadow: 0 0 10px rgba(234, 179, 8, 0.3); }
+    </style>
+</head>
+<body class="text-white h-screen flex flex-col items-center justify-center p-8">
+
+    <div class="w-full max-w-sm text-center mb-10">
+        <h1 class="text-5xl font-black italic tracking-tighter mb-1 uppercase">KOKORO<span class="text-yellow-500 text-glow">.AI</span></h1>
+        <p class="text-slate-500 text-[9px] uppercase tracking-[0.5em] font-bold opacity-70">Tu Novia Virtual Multiverso</p>
+    </div>
+
+    <div class="w-full max-w-sm glass-card p-10 rounded-[3.5rem]">
+        <h2 id="auth-title" class="text-xl font-black mb-8 text-center italic tracking-tight text-white/90">Bienvenido de nuevo</h2>
+        
+        <div class="space-y-5">
+            <div id="name-field" class="hidden">
+                <label class="text-[9px] uppercase font-black text-slate-500 ml-4 mb-2 block tracking-[0.2em]">Tu Identidad</label>
+                <input type="text" id="name" placeholder="Ej. Sora Medina" class="w-full bg-black/40 border border-white/5 p-4 rounded-2xl outline-none input-focus transition-all text-sm placeholder:opacity-30">
+            </div>
+
+            <div>
+                <label class="text-[9px] uppercase font-black text-slate-500 ml-4 mb-2 block tracking-[0.2em]">Correo de Enlace</label>
+                <input type="email" id="email" placeholder="tu@email.com" class="w-full bg-black/40 border border-white/5 p-4 rounded-2xl outline-none input-focus transition-all text-sm placeholder:opacity-30">
+            </div>
+
+            <div>
+                <label class="text-[9px] uppercase font-black text-slate-500 ml-4 mb-2 block tracking-[0.2em]">Código de Acceso</label>
+                <input type="password" id="pass" placeholder="••••••••" class="w-full bg-black/40 border border-white/5 p-4 rounded-2xl outline-none input-focus transition-all text-sm placeholder:opacity-30">
+            </div>
+
+            <button id="btn-main" onclick="ejecutarAuth()" class="w-full bg-yellow-500 text-black py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.15em] shadow-2xl shadow-yellow-500/10 active:scale-95 transition-all mt-4">
+                Entrar al Multiverso
+            </button>
+        </div>
+
+        <button onclick="cambiarModo()" id="toggle-text" class="w-full mt-8 text-[11px] text-slate-400 text-center hover:text-white transition-colors">
+            ¿No tienes cuenta? <span class="text-yellow-500 font-bold underline ml-1">Regístrate</span>
+        </button>
+    </div>
+
+    <div class="mt-12 flex items-center space-x-2 opacity-30">
+        <div class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+        <p class="text-[8px] uppercase font-black tracking-[0.3em]">Conexión Encriptada Kokoro Secure</p>
+    </div>
+
+</body>
+</html>

@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Laboratorio | Kokoro AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCSQw7b4_OJpxZRP8Tu9shvpB4nE-xwmQc",
+            authDomain: "smm-proyecto.firebaseapp.com",
+            projectId: "smm-proyecto",
+            storageBucket: "smm-proyecto.firebasestorage.app",
+            messagingSenderId: "696404417299",
+            appId: "1:696404417299:web:1c3982babc049a18f398e6"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        let userUID = null;
+        let finalImageUrl = ""; 
+        const IMGBB_API_KEY = "7be05fd20df981386917bd48040cbe78";
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) userUID = user.uid;
+            else window.location.href = 'auth.html';
+        });
+
+        window.subirImagen = async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const placeholder = document.getElementById('placeholder');
+            const preview = document.getElementById('preview');
+            const scanner = document.getElementById('scanner-line');
+            
+            placeholder.innerHTML = `<span class="text-[10px] animate-pulse font-black uppercase tracking-widest text-yellow-500">Sincronizando...</span>`;
+            scanner.classList.remove('hidden');
+            
+            const formData = new FormData();
+            formData.append("image", file);
+
+            try {
+                const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
+                    method: "POST",
+                    body: formData
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    finalImageUrl = data.data.url;
+                    preview.src = finalImageUrl;
+                    preview.classList.remove('hidden');
+                    placeholder.classList.add('hidden');
+                    scanner.classList.add('hidden');
+                } else {
+                    alert("Falla en la matriz de imagen");
+                    placeholder.innerText = "📸";
+                    scanner.classList.add('hidden');
+                }
+            } catch (error) {
+                alert("Error de conexión con el Multiverso");
+                scanner.classList.add('hidden');
+            }
+        };
+
+        window.addTag = (tag) => {
+            const bio = document.getElementById('bio');
+            bio.value += (bio.value ? ', ' : '') + tag;
+            bio.focus();
+        };
+
+        window.crearIA = async () => {
+            const nombre = document.getElementById('name').value;
+            const bio = document.getElementById('bio').value;
+            const categoria = document.getElementById('category').value;
+            const personalidad = document.getElementById('personality').value;
+            const btn = document.getElementById('btn-save');
+
+            if(!nombre || !bio || !finalImageUrl) return alert("El ritual requiere nombre, apariencia y esencia.");
+
+            btn.innerText = "MANIFESTANDO ENTIDAD...";
+            btn.disabled = true;
+
+            try {
+                await addDoc(collection(db, "personajes"), {
+                    name: nombre,
+                    description: bio,
+                    category: categoria,
+                    personalidad: personalidad,
+                    image: finalImageUrl,
+                    creatorId: userUID,
+                    createdAt: new Date(),
+                    isAdmin: false
+                });
+                window.location.href = "index.html";
+            } catch (e) {
+                alert("Error: " + e.message);
+                btn.disabled = false;
+                btn.innerText = "Inyectar Alma";
+            }
+        };
+    </script>
+
+    <style>
+        body { background: #010206; color: white; font-family: 'Inter', sans-serif; }
+        .glass-ui { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(25px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        .tag-btn { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); transition: all 0.2s; }
+        .tag-btn:active { background: #eab308; color: black; border-color: #eab308; }
+        
+        .custom-select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23eab308'%3%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 1rem center;
+            background-size: 1em;
+        }
+
+        #scanner-line {
+            height: 2px;
+            background: #eab308;
+            box-shadow: 0 0 15px #eab308;
+            animation: scan 2s linear infinite;
+        }
+        @keyframes scan {
+            0% { top: 0%; }
+            100% { top: 100%; }
+        }
+    </style>
+</head>
+<body class="p-8 pb-40">
+
+    <header class="flex justify-between items-center mb-10 pt-4">
+        <button onclick="window.location.href='index.html'" class="w-10 h-10 flex items-center justify-center bg-white/5 rounded-full opacity-60">❮</button>
+        <div class="text-right">
+            <h1 class="text-[10px] font-black uppercase tracking-[0.5em] text-yellow-500 italic leading-none">Soul Lab</h1>
+            <p class="text-[7px] text-slate-600 font-bold uppercase tracking-widest mt-1">Estudio de Manifestación</p>
+        </div>
+    </header>
+
+    <div class="max-w-md mx-auto space-y-8">
+        
+        <div class="flex flex-col items-center">
+            <input type="file" id="file-input" class="hidden" accept="image/*" onchange="subirImagen(event)">
+            
+            <div onclick="document.getElementById('file-input').click()" class="w-52 h-52 rounded-[4rem] glass-ui border-2 border-dashed border-yellow-500/20 flex items-center justify-center overflow-hidden cursor-pointer active:scale-95 transition-all relative group">
+                <img id="preview" class="hidden w-full h-full object-cover">
+                <div id="scanner-line" class="absolute left-0 right-0 z-20 hidden"></div>
+                <div id="placeholder" class="text-center group-hover:scale-110 transition-transform">
+                    <div class="text-4xl mb-3 text-yellow-500/80">✨</div>
+                    <span class="text-[9px] font-black uppercase tracking-[0.3em] text-yellow-500/60">Cargar Apariencia</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="glass-ui p-8 rounded-[3rem] space-y-6 relative overflow-hidden shadow-2xl">
+            
+            <div>
+                <label class="text-[9px] font-black uppercase text-slate-500 ml-4 mb-3 block tracking-[0.3em] italic">Nombre de la Entidad</label>
+                <input type="text" id="name" placeholder="Ej. Kurumi AI" class="w-full bg-black/40 border border-white/5 p-5 rounded-2xl outline-none focus:border-yellow-500/50 text-sm font-bold transition-all placeholder:opacity-20 uppercase tracking-tighter">
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="text-[9px] font-black uppercase text-slate-500 ml-4 mb-3 block tracking-[0.3em] italic">Categoría</label>
+                    <select id="category" class="custom-select w-full bg-black/40 border border-white/5 p-4 rounded-2xl outline-none focus:border-yellow-500/50 text-[10px] font-bold text-white uppercase tracking-widest">
+                        <option value="anime">🌸 Anime</option>
+                        <option value="chicos">🤵 Chicos</option>
+                        <option value="videojuegos">🎮 Gaming</option>
+                        <option value="realista">🏙️ Realista</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-[9px] font-black uppercase text-slate-500 ml-4 mb-3 block tracking-[0.3em] italic">Personalidad</label>
+                    <select id="personality" class="custom-select w-full bg-black/40 border border-white/5 p-4 rounded-2xl outline-none focus:border-yellow-500/50 text-[10px] font-bold text-white uppercase tracking-widest">
+                        <option value="Amable">😊 Amable</option>
+                        <option value="Gamer">🕹️ Gamer</option>
+                        <option value="Otaku">🍥 Otaku</option>
+                        <option value="Romántica">❤️ Romántica</option>
+                        <option value="Frío">❄️ Serio</option>
+                    </select>
+                </div>
+            </div>
+
+            <div>
+                <label class="text-[9px] font-black uppercase text-slate-500 ml-4 mb-3 block tracking-[0.3em] italic">Esencia y Rasgos</label>
+                <textarea id="bio" rows="3" placeholder="Define su personalidad detalladamente..." class="w-full bg-black/40 border border-white/5 p-5 rounded-2xl outline-none focus:border-yellow-500/50 text-sm resize-none transition-all placeholder:opacity-20"></textarea>
+                
+                <div class="flex flex-wrap gap-2 mt-4">
+                    <button onclick="addTag('Tsundere')" class="tag-btn px-3 py-2 rounded-xl text-[7px] font-black uppercase tracking-widest">#Tsundere</button>
+                    <button onclick="addTag('Cariñosa')" class="tag-btn px-3 py-2 rounded-xl text-[7px] font-black uppercase tracking-widest">#Cariñosa</button>
+                    <button onclick="addTag('Gótica')" class="tag-btn px-3 py-2 rounded-xl text-[7px] font-black uppercase tracking-widest">#Gótica</button>
+                    <button onclick="addTag('Tímida')" class="tag-btn px-3 py-2 rounded-xl text-[7px] font-black uppercase tracking-widest">#Tímida</button>
+                </div>
+            </div>
+
+            <button id="btn-save" onclick="crearIA()" class="w-full bg-yellow-500 text-black py-6 rounded-[2rem] font-black text-[11px] uppercase tracking-[0.3em] shadow-[0_15px_30px_rgba(234,179,8,0.15)] active:scale-95 transition-all mt-4">
+                Inyectar Alma
+            </button>
+        </div>
+    </div>
+
+    <nav class="fixed bottom-8 inset-x-8 glass-ui rounded-[2.5rem] p-5 flex justify-around items-center z-50 border-white/5 shadow-2xl">
+        <button onclick="window.location.href='index.html'" class="text-2xl opacity-30">🌌</button>
+        <button class="text-2xl text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.5)]">✨</button>
+        <button onclick="window.location.href='tienda.html'" class="text-2xl opacity-30">💎</button>
+        <button onclick="window.location.href='perfil.html'" class="text-2xl opacity-30">👤</button>
+    </nav>
+
+</body>
+</html>
