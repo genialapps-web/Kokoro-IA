@@ -33,7 +33,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getFirestore, collection, onSnapshot, query, orderBy, limit, doc, getDoc, deleteDoc, addDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-        import { getAuth, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getAuth, onAuthStateChanged, setPersistence, browserLocalPersistence, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCSQw7b4_OJpxZRP8Tu9shvpB4nE-xwmQc",
@@ -57,6 +57,7 @@
         let personajesData = []; 
         let categoriaActual = 'todos';
         let userUID = null;
+        let isAnon = false;
         let datingIndex = 0;
 
         // Variables para el Swipe táctil
@@ -65,8 +66,28 @@
         window.userAvatarData = null;
 
         onAuthStateChanged(auth, (user) => {
-            if (!user) window.location.href = 'auth.html';
-            else { userUID = user.uid; initApp(); }
+            if (!user) {
+                // Si no hay sesión, iniciar sesión de forma anónima inmediatamente
+                signInAnonymously(auth).catch((error) => {
+                    console.error("Error al iniciar sesión anónima:", error);
+                    window.location.href = 'auth.html';
+                });
+            } else {
+                userUID = user.uid;
+                isAnon = user.isAnonymous;
+                
+                // Si es un usuario anónimo, mostrar banner en la UI
+                if (isAnon) {
+                    const banner = document.getElementById('guest-banner');
+                    if (banner) banner.classList.remove('hidden');
+                    const profileBtn = document.getElementById('profile-btn');
+                    if (profileBtn) {
+                        profileBtn.onclick = () => window.location.href = 'auth.html';
+                        profileBtn.classList.add('border', 'border-yellow-500');
+                    }
+                }
+                initApp();
+            }
         });
 
         function initApp() {
@@ -285,6 +306,13 @@
         };
 
         window.crearPersonajeUsuario = async () => {
+            // Protección de Modo Invitado
+            if (isAnon) {
+                alert("Por favor, inicia sesión o regístrate para crear una nueva entidad en el multiverso.");
+                window.location.href = 'auth.html';
+                return;
+            }
+
             const name = document.getElementById('c-name').value;
             const desc = document.getElementById('c-desc').value;
             const personalidad = document.getElementById('c-pers').value;
@@ -348,8 +376,21 @@
                 <h1 class="text-3xl font-black italic tracking-tighter leading-none uppercase">KOKORO<span class="text-yellow-500">.AI</span></h1>
                 <p class="text-[9px] text-slate-500 font-bold uppercase tracking-[0.3em] mt-1">Elite Virtual Companion</p>
             </div>
-            <button onclick="window.location.href='perfil.html'" class="w-12 h-12 glass-premium rounded-2xl flex items-center justify-center text-xl">👤</button>
+            <button id="profile-btn" onclick="window.location.href='perfil.html'" class="w-12 h-12 glass-premium rounded-2xl flex items-center justify-center text-xl">👤</button>
         </header>
+
+        <div id="guest-banner" class="hidden bg-yellow-500/10 border border-yellow-500/30 p-4 rounded-3xl mb-8 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
+                <div>
+                    <p class="text-[10px] font-black text-yellow-500 uppercase tracking-widest">Modo Invitado Activo</p>
+                    <p class="text-[9px] text-slate-400">Estás explorando sin cuenta. ¡Regístrate para conservar tu historial y memoria!</p>
+                </div>
+            </div>
+            <button onclick="window.location.href='auth.html'" class="bg-yellow-500 text-black text-[8px] font-black uppercase px-4 py-2 rounded-xl shadow-lg shadow-yellow-500/10 active:scale-95 transition-all">
+                Regístrate
+            </button>
+        </div>
 
         <div class="relative mb-8">
             <input type="text" id="input-buscador" oninput="filtrarAlmas()" placeholder="Buscar por nombre o personalidad..." class="w-full bg-white/5 border border-white/10 p-5 rounded-full outline-none text-xs focus:border-yellow-500/50 transition-all italic text-white">
@@ -361,9 +402,9 @@
         </div>
 
         <div class="flex gap-2 overflow-x-auto no-scrollbar pb-8">
-            <button onclick="cambiarCategoria('todos', this)" class="cat-pill cat-pill-active whitespace-nowrap px-6 py-3 rounded-full border border-white/10 text-[9px] font-black uppercase tracking-widest transition-all">Todos</button>
-            <button onclick="cambiarCategoria('anime', this)" class="cat-pill whitespace-nowrap px-6 py-3 rounded-full border border-white/10 bg-white/5 text-white/40 text-[9px] font-black uppercase tracking-widest transition-all">🌸 Anime</button>
-            <button onclick="cambiarCategoria('videojuegos', this)" class="cat-pill whitespace-nowrap px-6 py-3 rounded-full border border-white/10 bg-white/5 text-white/40 text-[9px] font-black uppercase tracking-widest transition-all">🎮 Gaming</button>
+            <button onclick="cambiarCategoria('todos', this)" class="cat-pill cat-pill-active whitespace-nowrap px-6 py-3 rounded-full border border-white/10 text-[9px] font-black uppercase tracking-widestricto transition-all">Todos</button>
+            <button onclick="cambiarCategoria('anime', this)" class="cat-pill whitespace-nowrap px-6 py-3 rounded-full border border-white/10 bg-white/5 text-white/40 text-[9px] font-black uppercase tracking-estricto transition-all">🌸 Anime</button>
+            <button onclick="cambiarCategoria('videojuegos', this)" class="cat-pill whitespace-nowrap px-6 py-3 rounded-full border border-white/10 bg-white/5 text-white/40 text-[9px] font-black uppercase tracking-estricto transition-all">🎮 Gaming</button>
         </div>
 
         <div id="contenedor-ia" class="grid grid-cols-2 gap-4"></div>
@@ -381,8 +422,6 @@
         <div class="text-center mb-8">
             <h2 class="text-2xl font-black italic uppercase tracking-tighter">Crear <span class="text-yellow-500">Waifu</span></h2>
             <p class="text-[9px] text-slate-500 font-bold uppercase tracking-[0.3em]">Diseña y materializa a tu compañera ideal</p>
-        </div>
-        
         </div>
         
         <div class="glass-premium p-6 sm:p-8 rounded-[2.5rem] border border-white/10 space-y-5">
