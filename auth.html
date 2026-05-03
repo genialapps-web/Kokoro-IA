@@ -9,7 +9,7 @@
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, setPersistence, browserLocalPersistence, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -23,7 +23,19 @@
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
+        
+        // Forzar la persistencia local para que recuerde la sesión del usuario
+        setPersistence(auth, browserLocalPersistence)
+            .catch((error) => console.error("Error al configurar la persistencia:", error));
+
         const db = getFirestore(app);
+
+        // Si el usuario ya está autenticado, redirigir automáticamente
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                window.location.href = "index.html";
+            }
+        });
 
         let modoActual = 'login';
 
