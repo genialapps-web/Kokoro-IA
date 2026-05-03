@@ -218,7 +218,7 @@
             } catch (e) { console.error(e); }
         };
 
-        // Funciones de control de la Publicidad
+        // Funciones de control de la Publicidad y Bazar
         window.mostrarModalAnuncio = () => {
             document.getElementById('ad-modal').classList.remove('hidden');
         };
@@ -227,56 +227,11 @@
             document.getElementById('ad-modal').classList.add('hidden');
         };
 
-        window.verAnuncio = async () => {
-            const adContent = document.getElementById('ad-content');
-            adContent.innerHTML = `
-                <div class="flex flex-col items-center py-6">
-                    <div class="w-6 h-6 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-                    <p class="text-[9px] text-white/40 uppercase tracking-widest font-semibold">Cargando patrocinador... (5s)</p>
-                </div>
-            `;
-            
-            // Simulación de 5 segundos de publicidad (Video/Anuncio)
-            await new Promise(resolve => setTimeout(resolve, 5000));
-
-            adWatched = true;
-            window.cerrarModalAnuncio();
-
-            // Lógica añadida para sumar un número o crédito tras ver el anuncio
-            if (userUID) {
-                try {
-                    const uRef = doc(db, "usuarios", userUID);
-                    const uSnap = await getGetDocSafely(uRef);
-                    
-                    if (uSnap.exists()) {
-                        const uData = uSnap.data();
-                        // Se actualiza de forma manual para evitar errores si el campo no existía
-                        const currentFreeMessages = uData.freeMessages || 0;
-                        await updateDoc(uRef, { freeMessages: currentFreeMessages + 1 });
-                    }
-                } catch (e) {
-                    console.error("Error al actualizar el número del usuario", e);
-                }
-            }
-
-            // Restaurar el botón original del modal
-            adContent.innerHTML = `
-                <button onclick="verAnuncio()" class="w-full bg-gradient-to-r from-yellow-500 to-amber-600 text-black font-black text-[9px] uppercase tracking-widest py-3.5 px-4 rounded-xl shadow-xl shadow-yellow-500/10 active:scale-95 transition-all">
-                    Ver anuncio para enviar
-                </button>
-                <button onclick="cerrarModalAnuncio()" class="w-full mt-3.5 text-[8px] font-bold text-white/30 uppercase tracking-wider py-2">
-                    Cancelar
-                </button>
-            `;
-
-            // Llama a enviar el mensaje automáticamente
-            await enviarMensaje();
+        // Redirección al bazar como lo solicitó el usuario
+        window.irAlBazar = () => {
+            // Cambiar a 'bazar.html' o la ruta de tu bazar si es diferente
+            window.location.href = 'bazar.html'; 
         };
-
-        // Función auxiliar para obtener el documento asegurando compatibilidad
-        async function getGetDocSafely(ref) {
-            return await getDoc(ref);
-        }
 
         async function procesarRespuestaIA(userContent) {
             isTyping = true;
@@ -470,12 +425,12 @@
             </div>
             <h3 class="text-[11px] font-black text-yellow-500 uppercase tracking-widest mb-1.5">Espacio Publicitario</h3>
             <p class="text-[9px] text-white/50 max-w-[230px] mx-auto mb-6 leading-relaxed">
-                Para mantener la sincronía con tu personaje y continuar el chat, visualiza un breve anuncio de nuestros patrocinadores.
+                Ve al Bazar y presiona "Obtener" en los 5 Mensajes Gratis para seguir con el chat.
             </p>
             
             <div id="ad-content" class="w-full">
-                <button onclick="verAnuncio()" class="w-full bg-gradient-to-r from-yellow-500 to-amber-600 text-black font-black text-[9px] uppercase tracking-widest py-3.5 px-4 rounded-xl shadow-xl shadow-yellow-500/10 active:scale-95 transition-all">
-                    Ver anuncio para enviar
+                <button onclick="irAlBazar()" class="w-full bg-gradient-to-r from-yellow-500 to-amber-600 text-black font-black text-[9px] uppercase tracking-widest py-3.5 px-4 rounded-xl shadow-xl shadow-yellow-500/10 active:scale-95 transition-all">
+                    Ir al Bazar
                 </button>
                 <button onclick="cerrarModalAnuncio()" class="w-full mt-3.5 text-[8px] font-bold text-white/30 uppercase tracking-wider py-2">
                     Cancelar
