@@ -48,7 +48,6 @@
         let unsubscribeChat = null;
         let unsubscribeUser = null;
         let isTyping = false;
-        let adWatched = false; // Control de publicidad
 
         onAuthStateChanged(auth, (user) => {
             if (user) { 
@@ -161,18 +160,28 @@
                 </div>`;
         }
 
-        // Lógica de validación del anuncio
+        // Lógica validada de envío de mensajes
         window.enviarMensaje = async () => {
             if (isTyping) return;
 
             const userRef = doc(db, "usuarios", userUID);
             const userSnap = await getDoc(userRef);
-            const isPremium = userSnap.exists() && userSnap.data().isPremium;
 
-            // Si no es premium y no ha visto el anuncio, muestra el modal y detiene la función
-            if (!isPremium && !adWatched) {
-                window.mostrarModalAnuncio();
-                return;
+            // Verificamos si el usuario se quedó sin mensajes ni diamantes (y no es premium)
+            if (userSnap.exists()) {
+                const uData = userSnap.data();
+                const isPremium = uData.isPremium;
+
+                if (!isPremium) {
+                    const freeMsgs = uData.freeMessages || 0;
+                    const coins = uData.coins || 0;
+
+                    // Solo abre el modal si el balance está en cero y no es premium
+                    if (freeMsgs === 0 && coins === 0) {
+                        window.mostrarModalAnuncio();
+                        return;
+                    }
+                }
             }
 
             const input = document.getElementById('msg-input');
@@ -208,8 +217,6 @@
             }
 
             input.value = '';
-            // Restablece el control publicitario para que se vuelva a mostrar en la siguiente acción
-            adWatched = false;
 
             try {
                 const msgPath = collection(db, "usuarios", userUID, "chats", characterId, "mensajes");
@@ -227,10 +234,9 @@
             document.getElementById('ad-modal').classList.add('hidden');
         };
 
-        // Redirección al bazar como lo solicitó el usuario
+        // Redirección al bazar
         window.irAlBazar = () => {
-            // Cambiar a 'tienda.html' o la ruta de tu bazar si es diferente
-            window.location.href = 'tienda.html'; 
+            window.location.href = 'bazar.html'; 
         };
 
         async function procesarRespuestaIA(userContent) {
@@ -338,12 +344,21 @@
             if (!userUID) return;
             const userRef = doc(db, "usuarios", userUID);
             const userSnap = await getDoc(userRef);
-            const isPremium = userSnap.exists() && userSnap.data().isPremium;
 
-            // Validación de publicidad para evitar el bypass en los regalos
-            if (!isPremium && !adWatched) {
-                window.mostrarModalAnuncio();
-                return;
+            // Validar si el balance es cero antes de restringir por publicidad
+            if (userSnap.exists()) {
+                const uData = userSnap.data();
+                const isPremium = uData.isPremium;
+
+                if (!isPremium) {
+                    const freeMsgs = uData.freeMessages || 0;
+                    const coins = uData.coins || 0;
+
+                    if (freeMsgs === 0 && coins === 0) {
+                        window.mostrarModalAnuncio();
+                        return;
+                    }
+                }
             }
 
             if((userSnap.data().coins || 0) < costo) return alert("Diamantes insuficientes");
@@ -352,9 +367,6 @@
             await addDoc(collection(db, "usuarios", userUID, "chats", characterId, "mensajes"), { 
                 role: 'user', type: 'gift', icon: icon, content: nombre, createdAt: new Date() 
             });
-
-            // Reiniciamos el estado de control para obligar a ver anuncios después
-            adWatched = false;
 
             toggleRegalos();
             procesarRespuestaIA(`[REGALO: ${nombre} ${icon}]`);
