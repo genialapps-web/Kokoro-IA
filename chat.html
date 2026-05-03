@@ -48,6 +48,7 @@
         let unsubscribeChat = null;
         let unsubscribeUser = null;
         let isTyping = false;
+        let adWatched = false; // Control de publicidad
 
         onAuthStateChanged(auth, (user) => {
             if (user) { 
@@ -160,23 +161,34 @@
                 </div>`;
         }
 
+        // Lógica de validación del anuncio
         window.enviarMensaje = async () => {
             if (isTyping) return;
+
+            // Validación si es usuario Premium (no necesita ver anuncio)
+            const userRef = doc(db, "usuarios", userUID);
+            const userSnap = await getDoc(userRef);
+            const isPremium = userSnap.exists() && userSnap.data().isPremium;
+
+            // Si no es premium y no ha visto el anuncio, muestra el modal y detiene la función
+            if (!isPremium && !adWatched) {
+                window.mostrarModalAnuncio();
+                return;
+            }
+
             const input = document.getElementById('msg-input');
             const msg = input.value.trim();
             if (!msg || !userUID || !characterId) return;
 
-            const userRef = doc(db, "usuarios", userUID);
-
             try {
-                // Usamos transacciones atómicas de Firestore para evitar condiciones de carrera (envíos simultáneos)
+                // Usamos transacciones atómicas de Firestore para evitar condiciones de carrera
                 await runTransaction(db, async (transaction) => {
-                    const userSnap = await transaction.get(userRef);
-                    if (!userSnap.exists()) {
+                    const uSnap = await transaction.get(userRef);
+                    if (!uSnap.exists()) {
                         throw new Error("Usuario no encontrado en la base de datos.");
                     }
 
-                    const uData = userSnap.data();
+                    const uData = uSnap.data();
 
                     if (!uData.isPremium) {
                         const freeMsgs = uData.freeMessages || 0;
@@ -197,11 +209,52 @@
             }
 
             input.value = '';
+            // Restablece la publicidad para el próximo mensaje
+            adWatched = false;
+
             try {
                 const msgPath = collection(db, "usuarios", userUID, "chats", characterId, "mensajes");
                 await addDoc(msgPath, { role: 'user', content: msg, createdAt: new Date() });
                 procesarRespuestaIA(msg);
             } catch (e) { console.error(e); }
+        };
+
+        // Funciones de control de la Publicidad
+        window.mostrarModalAnuncio = () => {
+            document.getElementById('ad-modal').classList.remove('hidden');
+        };
+
+        window.cerrarModalAnuncio = () => {
+            document.getElementById('ad-modal').classList.add('hidden');
+        };
+
+        window.verAnuncio = async () => {
+            const adContent = document.getElementById('ad-content');
+            adContent.innerHTML = `
+                <div class="flex flex-col items-center py-6">
+                    <div class="w-6 h-6 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                    <p class="text-[9px] text-white/40 uppercase tracking-widest font-semibold">Reproduciendo anuncio... (5s)</p>
+                </div>
+            `;
+            
+            // Simulación de 5 segundos de publicidad (Video/Anuncio)
+            await new Promise(resolve => setTimeout(resolve, 5000));
+
+            adWatched = true;
+            window.cerrarModalAnuncio();
+
+            // Restaurar el contenido del botón en el modal
+            adContent.innerHTML = `
+                <button onclick="verAnuncio()" class="w-full bg-gradient-to-r from-yellow-500 to-amber-600 text-black font-black text-[9px] uppercase tracking-widest py-3.5 px-4 rounded-xl shadow-xl shadow-yellow-500/10 active:scale-95 transition-all">
+                    Ver anuncio para enviar
+                </button>
+                <button onclick="cerrarModalAnuncio()" class="w-full mt-3.5 text-[8px] font-bold text-white/30 uppercase tracking-wider py-2">
+                    Cancelar
+                </button>
+            `;
+
+            // Llama a enviar el mensaje automáticamente
+            await enviarMensaje();
         };
 
         async function procesarRespuestaIA(userContent) {
@@ -375,6 +428,29 @@
 </head>
 <body class="text-xs">
     
+    <div id="ad-modal" class="hidden fixed inset-0 bg-black/95 backdrop-blur-xl z-[200] flex flex-col justify-center items-center p-6 text-center">
+        <div class="max-w-xs w-full flex flex-col items-center">
+            <div class="bg-gradient-to-tr from-yellow-500 to-amber-600 p-[1px] rounded-full mb-4">
+                <div class="bg-black p-3.5 rounded-full">
+                    <span class="text-xl">📺</span>
+                </div>
+            </div>
+            <h3 class="text-[11px] font-black text-yellow-500 uppercase tracking-widest mb-1.5">Espacio Publicitario</h3>
+            <p class="text-[9px] text-white/50 max-w-[230px] mx-auto mb-6 leading-relaxed">
+                Para mantener la sincronía con tu personaje y continuar el chat, visualiza un breve anuncio de nuestros patrocinadores.
+            </p>
+            
+            <div id="ad-content" class="w-full">
+                <button onclick="verAnuncio()" class="w-full bg-gradient-to-r from-yellow-500 to-amber-600 text-black font-black text-[9px] uppercase tracking-widest py-3.5 px-4 rounded-xl shadow-xl shadow-yellow-500/10 active:scale-95 transition-all">
+                    Ver anuncio para enviar
+                </button>
+                <button onclick="cerrarModalAnuncio()" class="w-full mt-3.5 text-[8px] font-bold text-white/30 uppercase tracking-wider py-2">
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    </div>
+
     <header class="glass-header px-3 flex justify-between items-center z-50">
         <div class="flex items-center gap-2">
             <button onclick="window.location.href='index.html'" class="text-white/70 text-base pr-1">❮</button>
@@ -417,7 +493,7 @@
             </div>
             <div onclick="enviarRegalo('Peluche', '🧸', 150)" class="gift-card p-2.5 rounded-xl text-center">
                 <span class="text-lg">🧸</span><p class="text-[7px] font-bold mt-0.5 text-yellow-500">150</p>
-             </div>
+            </div>
             <div onclick="enviarRegalo('Anillo', '💍', 300)" class="gift-card p-2.5 rounded-xl text-center">
                 <span class="text-lg">💍</span><p class="text-[7px] font-bold mt-0.5 text-yellow-500">300</p>
             </div>
