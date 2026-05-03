@@ -33,7 +33,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getFirestore, collection, onSnapshot, query, orderBy, limit, doc, getDoc, deleteDoc, addDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getAuth, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCSQw7b4_OJpxZRP8Tu9shvpB4nE-xwmQc",
@@ -47,6 +47,11 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
+
+        // Configuración para que el navegador recuerde la sesión del usuario
+        setPersistence(auth, browserLocalPersistence)
+            .catch((error) => console.error("Error al configurar la persistencia:", error));
+
         const IMGBB_KEY = "7be05fd20df981386917bd48040cbe78";
 
         let personajesData = []; 
@@ -376,6 +381,8 @@
         <div class="text-center mb-8">
             <h2 class="text-2xl font-black italic uppercase tracking-tighter">Crear <span class="text-yellow-500">Waifu</span></h2>
             <p class="text-[9px] text-slate-500 font-bold uppercase tracking-[0.3em]">Diseña y materializa a tu compañera ideal</p>
+        </div>
+        
         </div>
         
         <div class="glass-premium p-6 sm:p-8 rounded-[2.5rem] border border-white/10 space-y-5">
