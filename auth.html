@@ -9,7 +9,7 @@
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, setPersistence, browserLocalPersistence, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, setPersistence, browserLocalPersistence, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -30,7 +30,7 @@
 
         const db = getFirestore(app);
 
-        // Si el usuario ya está autenticado, redirigir automáticamente
+        // Si el usuario ya está autenticado (incluyendo sesión anónima), redirigir automáticamente
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 window.location.href = "index.html";
@@ -90,6 +90,21 @@
                 btn.disabled = false;
             }
         };
+
+        // Nueva función para entrar como invitado anónimo
+        window.entrarComoInvitado = async () => {
+            const btn = document.getElementById('btn-guest');
+            try {
+                btn.innerText = "Conectando...";
+                btn.disabled = true;
+                await signInAnonymously(auth);
+                window.location.href = "index.html";
+            } catch (e) {
+                alert("Error al entrar como invitado: " + e.message);
+                btn.innerText = "Explorar como Invitado";
+                btn.disabled = false;
+            }
+        };
     </script>
     <style>
         body { 
@@ -134,6 +149,10 @@
 
             <button id="btn-main" onclick="ejecutarAuth()" class="w-full bg-yellow-500 text-black py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.15em] shadow-2xl shadow-yellow-500/10 active:scale-95 transition-all mt-4">
                 Entrar al Multiverso
+            </button>
+            
+            <button id="btn-guest" onclick="entrarComoInvitado()" class="w-full bg-slate-900 text-slate-400 border border-white/10 py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.15em] active:scale-95 transition-all mt-3 hover:text-white hover:border-yellow-500/30 transition-colors">
+                Explorar como Invitado
             </button>
         </div>
 
