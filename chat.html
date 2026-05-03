@@ -165,7 +165,6 @@
         window.enviarMensaje = async () => {
             if (isTyping) return;
 
-            // Validación si es usuario Premium (no necesita ver anuncio)
             const userRef = doc(db, "usuarios", userUID);
             const userSnap = await getDoc(userRef);
             const isPremium = userSnap.exists() && userSnap.data().isPremium;
@@ -209,7 +208,7 @@
             }
 
             input.value = '';
-            // Restablece la publicidad para el próximo mensaje
+            // Restablece el control publicitario para que se vuelva a mostrar en la siguiente acción
             adWatched = false;
 
             try {
@@ -233,7 +232,7 @@
             adContent.innerHTML = `
                 <div class="flex flex-col items-center py-6">
                     <div class="w-6 h-6 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-                    <p class="text-[9px] text-white/40 uppercase tracking-widest font-semibold">Reproduciendo anuncio... (5s)</p>
+                    <p class="text-[9px] text-white/40 uppercase tracking-widest font-semibold">Cargando patrocinador... (5s)</p>
                 </div>
             `;
             
@@ -243,7 +242,24 @@
             adWatched = true;
             window.cerrarModalAnuncio();
 
-            // Restaurar el contenido del botón en el modal
+            // Lógica añadida para sumar un número o crédito tras ver el anuncio
+            if (userUID) {
+                try {
+                    const uRef = doc(db, "usuarios", userUID);
+                    const uSnap = await getGetDocSafely(uRef);
+                    
+                    if (uSnap.exists()) {
+                        const uData = uSnap.data();
+                        // Se actualiza de forma manual para evitar errores si el campo no existía
+                        const currentFreeMessages = uData.freeMessages || 0;
+                        await updateDoc(uRef, { freeMessages: currentFreeMessages + 1 });
+                    }
+                } catch (e) {
+                    console.error("Error al actualizar el número del usuario", e);
+                }
+            }
+
+            // Restaurar el botón original del modal
             adContent.innerHTML = `
                 <button onclick="verAnuncio()" class="w-full bg-gradient-to-r from-yellow-500 to-amber-600 text-black font-black text-[9px] uppercase tracking-widest py-3.5 px-4 rounded-xl shadow-xl shadow-yellow-500/10 active:scale-95 transition-all">
                     Ver anuncio para enviar
@@ -256,6 +272,11 @@
             // Llama a enviar el mensaje automáticamente
             await enviarMensaje();
         };
+
+        // Función auxiliar para obtener el documento asegurando compatibilidad
+        async function getGetDocSafely(ref) {
+            return await getDoc(ref);
+        }
 
         async function procesarRespuestaIA(userContent) {
             isTyping = true;
@@ -362,12 +383,24 @@
             if (!userUID) return;
             const userRef = doc(db, "usuarios", userUID);
             const userSnap = await getDoc(userRef);
+            const isPremium = userSnap.exists() && userSnap.data().isPremium;
+
+            // Validación de publicidad para evitar el bypass en los regalos
+            if (!isPremium && !adWatched) {
+                window.mostrarModalAnuncio();
+                return;
+            }
+
             if((userSnap.data().coins || 0) < costo) return alert("Diamantes insuficientes");
 
             await updateDoc(userRef, { coins: increment(-costo) });
             await addDoc(collection(db, "usuarios", userUID, "chats", characterId, "mensajes"), { 
                 role: 'user', type: 'gift', icon: icon, content: nombre, createdAt: new Date() 
             });
+
+            // Reiniciamos el estado de control para obligar a ver anuncios después
+            adWatched = false;
+
             toggleRegalos();
             procesarRespuestaIA(`[REGALO: ${nombre} ${icon}]`);
         };
