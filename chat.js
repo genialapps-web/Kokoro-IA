@@ -20,71 +20,72 @@ let isAnon = false;
 let systemPrompt = "";
 let personajeId = null;
 
-// Obtener el ID del personaje desde la URL (?id=...)
+// Obtener el ID del personaje desde la URL
 const urlParams = new URLSearchParams(window.location.search);
 personajeId = urlParams.get('id');
 
-if (!personajeId) {
-    window.location.href = 'index.html';
-}
-
 onAuthStateChanged(auth, async (user) => {
-    if (!user) {
-        // Si no existe un usuario, creamos una sesión anónima automáticamente
-        signInAnonymously(auth).catch((error) => {
-            console.error("Error de autenticación anónima:", error);
-            window.location.href = 'auth.html';
-        });
-    } else {
+    if (user) {
         userUID = user.uid;
         isAnon = user.isAnonymous;
 
-        // Mostrar advertencia si es invitado
-        if (isAnon) {
-            const guestAlert = document.getElementById('guest-chat-alert');
-            if (guestAlert) guestAlert.classList.remove('hidden');
+        if (personajeId) {
+            await cargarDatosPersonaje();
+            inicializarEscuchaMensajes();
         }
-
-        await cargarDatosPersonaje();
-        inicializarEscuchaMensajes();
+    } else {
+        // No forzamos la creación de usuario anónimo al entrar. 
+        // Esperamos a que el usuario interactúe (envíe un mensaje).
+        console.log("Usuario visitante listo para explorar.");
     }
 });
 
 // Cargar la información del personaje seleccionado
 async function cargarDatosPersonaje() {
     try {
+        if (!personajeId) return;
         const docRef = doc(db, "personajes", personajeId);
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
             const data = docSnap.data();
             
-            // Actualizamos la información en el DOM
             const nameEl = document.getElementById('ia-name');
             if (nameEl) nameEl.innerText = data.name;
             
             const imgElement = document.getElementById('chat-avatar');
             if (imgElement) imgElement.src = data.image;
             
-            // Guardamos el prompt del sistema
             systemPrompt = data.physicalPrompt || data.description || "Eres una entidad del multiverso.";
-        } else {
-            alert("La entidad no existe en el Santuario.");
-            window.location.href = 'index.html';
         }
     } catch (e) {
         console.error("Error al cargar datos del personaje:", e);
     }
 }
 
-// Enviar mensaje con control de límite de invitados
+// Enviar mensaje con control de límite e inicio de sesión bajo demanda
 window.enviarMensaje = async function () {
     const inputField = document.getElementById('chat-input');
     const mensajeTexto = inputField.value.trim();
 
     if (!mensajeTexto) return;
 
-    // Control de límite para invitados (máximo 3 mensajes)
+    // Si el usuario no está autenticado, intentamos autenticarlo anónimamente en el momento
+    if (!auth.currentUser) {
+        try {
+            const userCredential = await signInAnonymously(auth);
+            userUID = userCredential.user.uid;
+            isAnon = userCredential.user.isAnonymous;
+        } catch (e) {
+            console.error("No se pudo iniciar sesión anónima:", e);
+            // Si hay un error de permisos en Firebase, redirigimos a la creación de cuenta directamente
+            alert("Por favor, inicia sesión o regístrate para continuar.");
+            window.location.href = 'auth.html';
+            return;
+        }
+    }
+
+    // Control de límite para invitados
     if (isAnon) {
         let mensajesInvitado = parseInt(localStorage.getItem('mensajes_invitado') || '0');
         if (mensajesInvitado >= 3) {
@@ -102,19 +103,16 @@ window.enviarMensaje = async function () {
             timestamp: serverTimestamp()
         };
 
-        // Guardar mensaje en la base de datos
         await addDoc(collection(db, "usuarios", userUID, "chats", personajeId, "mensajes"), payload);
-        inputField.value = ""; // Limpiamos el input
-        
-        // Aquí irá la lógica de respuesta de la IA
-
+        inputField.value = "";
     } catch (e) {
         alert("Error al enviar el mensaje: " + e.message);
     }
 }
 
 function inicializarEscuchaMensajes() {
-    // Listener de la base de datos para mostrar mensajes en tiempo real
+    if (!userUID || !personajeId) return;
+
     const q = query(
         collection(db, "usuarios", userUID, "chats", personajeId, "mensajes"), 
         orderBy("timestamp", "asc")
@@ -147,9 +145,6 @@ function inicializarEscuchaMensajes() {
                 </div>
             `;
         });
-
-        // Auto-scroll al final del chat
         chatContainer.scrollTop = chatContainer.scrollHeight;
     });
 }
-
