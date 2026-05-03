@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getFirestore, doc, getDoc, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyCSQw7b4_OJpxZRP8Tu9shvpB4nE-xwmQc",
@@ -34,8 +34,6 @@ onAuthStateChanged(auth, async (user) => {
             inicializarEscuchaMensajes();
         }
     } else {
-        // No forzamos la creación de usuario anónimo al entrar. 
-        // Esperamos a que el usuario interactúe (envíe un mensaje).
         console.log("Usuario visitante listo para explorar.");
     }
 });
@@ -70,15 +68,23 @@ window.enviarMensaje = async function () {
 
     if (!mensajeTexto) return;
 
-    // Si el usuario no está autenticado, intentamos autenticarlo anónimamente en el momento
+    // Si el usuario no está autenticado, intentamos autenticarlo anónimamente
     if (!auth.currentUser) {
         try {
             const userCredential = await signInAnonymously(auth);
             userUID = userCredential.user.uid;
             isAnon = userCredential.user.isAnonymous;
+
+            // CREAR EL DOCUMENTO FALTANTE EN LA BASE DE DATOS
+            // Esto evita el error de "Usuario no encontrado" para invitados
+            await setDoc(doc(db, "usuarios", userUID), {
+                createdAt: serverTimestamp(),
+                esInvitado: true,
+                rol: "invitado"
+            }, { merge: true });
+
         } catch (e) {
             console.error("No se pudo iniciar sesión anónima:", e);
-            // Si hay un error de permisos en Firebase, redirigimos a la creación de cuenta directamente
             alert("Por favor, inicia sesión o regístrate para continuar.");
             window.location.href = 'auth.html';
             return;
@@ -147,4 +153,4 @@ function inicializarEscuchaMensajes() {
         });
         chatContainer.scrollTop = chatContainer.scrollHeight;
     });
-}
+        }
