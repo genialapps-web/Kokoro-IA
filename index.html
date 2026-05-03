@@ -75,6 +75,31 @@
             } else {
                 userUID = user.uid;
                 isAnon = user.isAnonymous;
+                import { getDoc, setDoc, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+async function inicializarUsuarioInvitado(user) {
+    const userRef = doc(db, "usuarios", user.uid);
+    const userSnap = await getDoc(userRef);
+
+    // Si el usuario no existe en Firestore, lo creamos con 5 oportunidades
+    if (!userSnap.exists()) {
+        await setDoc(userRef, {
+            uid: user.uid,
+            isAnonymous: user.isAnonymous,
+            createdAt: new Date(),
+            chances: 5, // Límite de 5 oportunidades de chat
+            chats: []
+        });
+    } else {
+        const userData = userSnap.data();
+        
+        // Verificamos si aún tiene oportunidades en caso de ser invitado
+        if (user.isAnonymous && userData.chances <= 0) {
+            alert("Has agotado tus 5 oportunidades de chat gratuito. ¡Regístrate para continuar!");
+            window.location.href = "auth.html";
+        }
+    }
+}
                 
                 // Si es un usuario anónimo, mostrar banner en la UI
                 if (isAnon) {
