@@ -15,24 +15,22 @@
 
         .glass-premium { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.08); }
         
-        /* Animación de entrada de tarjeta */
         @keyframes cardEnter {
             0% { opacity: 0; transform: scale(0.9) translateY(40px); }
             100% { opacity: 1; transform: scale(1) translateY(0); }
         }
         .animate-card { animation: cardEnter 0.5s cubic-bezier(0.23, 1, 0.32, 1) forwards; }
 
-        /* Estilo de la Tarjeta Dating */
         .dating-card { box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8); transition: transform 0.4s ease-out, opacity 0.3s ease; touch-action: none; }
         .cat-pill-active { background: var(--gold); color: black; box-shadow: 0 0 20px rgba(234, 179, 8, 0.3); }
 
-        /* Efecto de Match Corazón */
         .heart-btn { background: linear-gradient(135deg, #eab308 0%, #ca8a04 100%); box-shadow: 0 10px 25px rgba(234, 179, 8, 0.4); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, onSnapshot, query, orderBy, limit, doc, getDoc, deleteDoc, addDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, onSnapshot, query, orderBy, doc, getDoc, setDoc, addDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getAuth, onAuthStateChanged, setPersistence, browserLocalPersistence, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         const firebaseConfig = {
@@ -48,72 +46,42 @@
         const db = getFirestore(app);
         const auth = getAuth(app);
 
-        // Configuración para que el navegador recuerde la sesión del usuario
-        setPersistence(auth, browserLocalPersistence)
-            .catch((error) => console.error("Error al configurar la persistencia:", error));
-
-        const IMGBB_KEY = "7be05fd20df981386917bd48040cbe78";
-
         let personajesData = []; 
         let categoriaActual = 'todos';
         let userUID = null;
-        let isAnon = false;
         let datingIndex = 0;
-
-        // Variables para el Swipe táctil
         let startX = 0;
         let currentX = 0;
-        window.userAvatarData = null;
 
-        onAuthStateChanged(auth, (user) => {
-            if (!user) {
-                // Si no hay sesión, iniciar sesión de forma anónima inmediatamente
-                signInAnonymously(auth).catch((error) => {
-                    console.error("Error al iniciar sesión anónima:", error);
-                    window.location.href = 'auth.html';
-                });
-            } else {
-                userUID = user.uid;
-                isAnon = user.isAnonymous;
-                import { getDoc, setDoc, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
-async function inicializarUsuarioInvitado(user) {
-    const userRef = doc(db, "usuarios", user.uid);
-    const userSnap = await getDoc(userRef);
-
-    // Si el usuario no existe en Firestore, lo creamos con 5 oportunidades
-    if (!userSnap.exists()) {
-        await setDoc(userRef, {
-            uid: user.uid,
-            isAnonymous: user.isAnonymous,
-            createdAt: new Date(),
-            chances: 5, // Límite de 5 oportunidades de chat
-            chats: []
-        });
-    } else {
-        const userData = userSnap.data();
-        
-        // Verificamos si aún tiene oportunidades en caso de ser invitado
-        if (user.isAnonymous && userData.chances <= 0) {
-            alert("Has agotado tus 5 oportunidades de chat gratuito. ¡Regístrate para continuar!");
-            window.location.href = "auth.html";
-        }
-    }
-}
-                
-                // Si es un usuario anónimo, mostrar banner en la UI
-                if (isAnon) {
-                    const banner = document.getElementById('guest-banner');
-                    if (banner) banner.classList.remove('hidden');
-                    const profileBtn = document.getElementById('profile-btn');
-                    if (profileBtn) {
-                        profileBtn.onclick = () => window.location.href = 'auth.html';
-                        profileBtn.classList.add('border', 'border-yellow-500');
+        // --- AUTH & PERSISTENCIA ---
+        setPersistence(auth, browserLocalPersistence).then(() => {
+            onAuthStateChanged(auth, async (user) => {
+                if (!user) {
+                    await signInAnonymously(auth);
+                } else {
+                    userUID = user.uid;
+                    await inicializarPerfilUsuario(user);
+                    if (user.isAnonymous) {
+                        document.getElementById('guest-banner')?.classList.remove('hidden');
                     }
+                    initApp();
                 }
-                initApp();
-            }
+            });
         });
+
+        async function inicializarPerfilUsuario(user) {
+            const userRef = doc(db, "usuarios", user.uid);
+            const userSnap = await getDoc(userRef);
+            if (!userSnap.exists()) {
+                await setDoc(userRef, {
+                    uid: user.uid,
+                    isAnonymous: user.isAnonymous,
+                    createdAt: new Date(),
+                    chances: 10, // Más margen para invitados
+                    lastLogin: new Date()
+                });
+            }
+        }
 
         function initApp() {
             escucharPersonajes();
@@ -133,171 +101,61 @@ async function inicializarUsuarioInvitado(user) {
             else aplicarFiltros();
         }
 
+        // --- NAVEGACIÓN GLOBAL ---
         window.toggleModo = (modo) => {
-            const explorer = document.getElementById('vista-explorar');
-            const dating = document.getElementById('seccion-dating');
-            const crear = document.getElementById('seccion-crear');
-            const btnDating = document.getElementById('btn-nav-dating');
-            const btnHome = document.getElementById('btn-nav-home');
-            const btnCreate = document.getElementById('btn-nav-create');
-
-            // Ocultar todas las vistas
-            explorer.classList.add('hidden');
-            dating.classList.add('hidden');
-            crear.classList.add('hidden');
-
-            // Desactivar botones de navegación
-            btnHome.classList.remove('text-yellow-500', 'scale-110');
-            btnHome.classList.add('opacity-30');
-            btnDating.classList.remove('text-yellow-500', 'scale-110');
-            btnDating.classList.add('opacity-30');
-            if (btnCreate) {
-                btnCreate.classList.remove('text-yellow-500', 'scale-110');
-                btnCreate.classList.add('opacity-30');
-            }
-
-            if (modo === 'dating') {
-                dating.classList.remove('hidden');
-                btnDating.classList.add('text-yellow-500', 'scale-110');
-                btnDating.classList.remove('opacity-30');
-                renderDatingCard();
-            } else if (modo === 'create') {
-                crear.classList.remove('hidden');
-                if (btnCreate) {
-                    btnCreate.classList.add('text-yellow-500', 'scale-110');
-                    btnCreate.classList.remove('opacity-30');
-                }
-            } else {
-                explorer.classList.remove('hidden');
-                btnHome.classList.add('text-yellow-500', 'scale-110');
-                btnHome.classList.remove('opacity-30');
-                aplicarFiltros();
-            }
-        };
-
-        // --- RENDER DATING CON SOPORTE DE VIDEO Y ACCIONES ---
-        window.renderDatingCard = () => {
-            const container = document.getElementById('dating-card-container');
-            if (personajesData.length === 0) return;
+            const sections = ['vista-explorar', 'seccion-dating', 'seccion-crear'];
+            const buttons = ['btn-nav-home', 'btn-nav-dating', 'btn-nav-create'];
             
-            const ia = personajesData[datingIndex % personajesData.length];
-
-            const mediaContent = ia.videoUrl 
-                ? `<video src="${ia.videoUrl}" autoplay loop muted playsinline class="w-full h-full object-cover pointer-events-none"></video>`
-                : `<img src="${ia.image}" class="w-full h-full object-cover pointer-events-none">`;
-
-            container.innerHTML = `
-                <div id="active-card" class="dating-card relative w-full max-w-[380px] h-[620px] rounded-[3.5rem] overflow-hidden border border-white/10 animate-card bg-slate-900">
-                    ${mediaContent}
-                    
-                    <div class="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent"></div>
-                    
-                    <div class="absolute top-6 right-6">
-                        <span class="bg-black/60 backdrop-blur-md text-yellow-500 text-[10px] font-black px-4 py-2 rounded-full border border-yellow-500/30 uppercase tracking-widest">
-                            ${ia.personalidad || 'Mística'}
-                        </span>
-                    </div>
-
-                    <div class="absolute bottom-0 left-0 right-0 p-8 pb-10">
-                        <h3 class="text-4xl font-black text-white italic tracking-tighter uppercase leading-none mb-3">
-                            ${ia.name}
-                        </h3>
-                        <p class="text-white/60 text-xs font-medium mb-8 line-clamp-2">"${ia.description}"</p>
-
-                        <div class="flex items-center justify-around gap-4">
-                            <button onclick="nextDating(false)" class="w-16 h-16 rounded-full glass-premium flex items-center justify-center text-2xl active:scale-90 transition-all">✕</button>
-                            
-                            <button onclick="window.location.href='chat.html?id=${ia.id}'" class="heart-btn w-20 h-20 rounded-full flex items-center justify-center text-3xl active:scale-95 transition-all">
-                                ❤️
-                            </button>
-                            
-                            <button onclick="nextDating(true)" class="w-16 h-16 rounded-full glass-premium flex items-center justify-center text-2xl text-yellow-500 active:scale-90 transition-all">⭐</button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            initSwipeLogic();
-        };
-
-        // Lógica de Deslizamiento (Swipe)
-        function initSwipeLogic() {
-            const card = document.getElementById('active-card');
-            if (!card) return;
-
-            card.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; }, {passive: true});
-            
-            card.addEventListener('touchmove', (e) => {
-                currentX = e.touches[0].clientX;
-                const diff = currentX - startX;
-                const rotation = diff / 15;
-                card.style.transform = `translateX(${diff}px) rotate(${rotation}deg)`;
-                if(Math.abs(diff) > 50) card.style.opacity = "0.6";
-            }, {passive: true});
-
-            card.addEventListener('touchend', () => {
-                const diff = currentX - startX;
-                if (diff > 100) {
-                    nextDating(true); 
-                } else if (diff < -100) {
-                    nextDating(false); 
-                } else {
-                    card.style.transform = 'translateX(0px) rotate(0deg)';
-                    card.style.opacity = "1";
-                }
+            sections.forEach(s => document.getElementById(s).classList.add('hidden'));
+            buttons.forEach(b => {
+                const btn = document.getElementById(b);
+                if(btn) { btn.classList.add('opacity-30'); btn.classList.remove('text-yellow-500', 'scale-110'); }
             });
-        }
 
-        window.nextDating = (liked) => {
-            const card = document.querySelector('.dating-card');
-            if(!card) return;
-            card.style.transform = liked ? 'translateX(200%) rotate(30deg)' : 'translateX(-200%) rotate(-30deg)';
-            card.style.opacity = '0';
-            setTimeout(() => { datingIndex++; renderDatingCard(); }, 300);
+            if(modo === 'home') {
+                document.getElementById('vista-explorar').classList.remove('hidden');
+                document.getElementById('btn-nav-home').classList.add('text-yellow-500', 'scale-110');
+                document.getElementById('btn-nav-home').classList.remove('opacity-30');
+                aplicarFiltros();
+            } else if(modo === 'dating') {
+                document.getElementById('seccion-dating').classList.remove('hidden');
+                document.getElementById('btn-nav-dating').classList.add('text-yellow-500', 'scale-110');
+                document.getElementById('btn-nav-dating').classList.remove('opacity-30');
+                renderDatingCard();
+            } else if(modo === 'create') {
+                document.getElementById('seccion-crear').classList.remove('hidden');
+                document.getElementById('btn-nav-create').classList.add('text-yellow-500', 'scale-110');
+                document.getElementById('btn-nav-create').classList.remove('opacity-30');
+            }
         };
 
-        // --- LISTA CLÁSICA Y FILTRADO ---
+        // --- EXPLORAR & FILTROS ---
+        window.aplicarFiltros = () => {
+            const term = document.getElementById('input-buscador').value.toLowerCase();
+            const filtrados = personajesData.filter(ia => {
+                const matchesTerm = ia.name.toLowerCase().includes(term) || (ia.personalidad && ia.personalidad.toLowerCase().includes(term));
+                const matchesCategory = categoriaActual === 'todos' || (ia.category && ia.category.toLowerCase() === categoriaActual.toLowerCase());
+                return matchesTerm && matchesCategory;
+            });
+            renderizarLista(filtrados);
+        };
+
         function renderizarLista(lista) {
             const contenedor = document.getElementById('contenedor-ia');
             contenedor.innerHTML = '';
-            if (lista.length === 0) {
-                contenedor.innerHTML = `<p class="col-span-2 text-center text-xs text-slate-500 py-10 uppercase tracking-widest">No se encontraron entidades en el multiverso.</p>`;
-                return;
-            }
-            
             lista.forEach(ia => {
                 contenedor.innerHTML += `
                     <div onclick="window.location.href='chat.html?id=${ia.id}'" class="group relative animate-card cursor-pointer">
-                        <div class="absolute top-3 right-3 z-10">
-                            <span class="bg-black/70 backdrop-blur-md text-[7px] text-yellow-500 px-2 py-1 rounded-full font-black uppercase border border-yellow-500/20 tracking-tighter">
-                                ${ia.personalidad || 'Santuario'}
-                            </span>
-                        </div>
                         <div class="w-full aspect-[3/4] rounded-[2.5rem] overflow-hidden border border-white/5 bg-slate-900 relative">
                             <img src="${ia.image}" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all duration-500">
                             <div class="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
                             <div class="absolute bottom-4 left-5 right-5">
                                 <h4 class="text-sm font-black italic uppercase text-white tracking-tighter">${ia.name}</h4>
-                                <p class="text-[7px] text-yellow-500/70 font-bold uppercase tracking-widest mt-1">${ia.category || 'todos'}</p>
+                                <p class="text-[7px] text-yellow-500 font-bold uppercase tracking-widest mt-1">${ia.personalidad || 'Elite'}</p>
                             </div>
                         </div>
                     </div>`;
             });
-        }
-
-        window.filtrarAlmas = () => aplicarFiltros();
-
-        function aplicarFiltros() {
-            const term = document.getElementById('input-buscador').value.toLowerCase();
-            const filtrados = personajesData.filter(ia => {
-                const matchesTerm = ia.name.toLowerCase().includes(term) || (ia.personalidad && ia.personalidad.toLowerCase().includes(term));
-                
-                // Si categoría actual es todos, mostramos todos; si no, filtramos por categoría
-                const matchesCategory = categoriaActual === 'todos' || (ia.category && ia.category.toLowerCase() === categoriaActual.toLowerCase());
-                
-                return matchesTerm && matchesCategory;
-            });
-            
-            renderizarLista(filtrados);
         }
 
         window.cambiarCategoria = (cat, element) => {
@@ -307,18 +165,40 @@ async function inicializarUsuarioInvitado(user) {
             aplicarFiltros();
         };
 
+        // --- DATING ENGINE ---
+        window.renderDatingCard = () => {
+            const container = document.getElementById('dating-card-container');
+            if (personajesData.length === 0) return;
+            const ia = personajesData[datingIndex % personajesData.length];
+
+            container.innerHTML = `
+                <div id="active-card" class="dating-card relative w-full max-w-[380px] h-[620px] rounded-[3.5rem] overflow-hidden border border-white/10 animate-card bg-slate-900">
+                    <img src="${ia.image}" class="w-full h-full object-cover pointer-events-none">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent"></div>
+                    <div class="absolute bottom-0 left-0 right-0 p-8 pb-10">
+                        <h3 class="text-4xl font-black text-white italic tracking-tighter uppercase mb-3">${ia.name}</h3>
+                        <p class="text-white/60 text-xs font-medium mb-8 line-clamp-2">"${ia.description}"</p>
+                        <div class="flex items-center justify-around gap-4">
+                            <button onclick="nextDating(false)" class="w-16 h-16 rounded-full glass-premium flex items-center justify-center text-2xl active:scale-90 transition-all">✕</button>
+                            <button onclick="window.location.href='chat.html?id=${ia.id}'" class="heart-btn w-20 h-20 rounded-full flex items-center justify-center text-3xl active:scale-95 transition-all">❤️</button>
+                            <button onclick="nextDating(true)" class="w-16 h-16 rounded-full glass-premium flex items-center justify-center text-2xl text-yellow-500 active:scale-90 transition-all">⭐</button>
+                        </div>
+                    </div>
+                </div>`;
+        };
+
+        window.nextDating = (liked) => {
+            datingIndex++;
+            renderDatingCard();
+        };
+
         function cargarChatsActivos() {
             if (!userUID) return;
             onSnapshot(collection(db, "usuarios", userUID, "chats"), (snapshot) => {
                 const contenedor = document.getElementById('lista-chats-activos');
-                contenedor.innerHTML = '';
-                
-                if (snapshot.empty) { 
-                    document.getElementById('seccion-recientes').classList.add('hidden'); 
-                    return; 
-                }
-                
+                if (snapshot.empty) { document.getElementById('seccion-recientes').classList.add('hidden'); return; }
                 document.getElementById('seccion-recientes').classList.remove('hidden');
+                contenedor.innerHTML = '';
                 snapshot.forEach(async (d) => {
                     const iaSnap = await getDoc(doc(db, "personajes", d.id));
                     if (iaSnap.exists()) {
@@ -326,87 +206,15 @@ async function inicializarUsuarioInvitado(user) {
                         contenedor.innerHTML += `
                             <div onclick="window.location.href='chat.html?id=${d.id}'" class="flex items-center gap-4 p-4 glass-premium rounded-[2rem] mb-3 border border-white/5 cursor-pointer">
                                 <img src="${ia.image}" class="w-12 h-12 rounded-full object-cover border border-yellow-500/20">
-                                <div class="flex-1"><h4 class="text-xs font-black uppercase text-white">${ia.name}</h4><p class="text-[8px] text-yellow-500 font-bold uppercase">${ia.personalidad || 'Chat'}</p></div>
-                                <div class="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+                                <div class="flex-1"><h4 class="text-xs font-black uppercase text-white">${ia.name}</h4><p class="text-[8px] text-yellow-500 font-bold uppercase">Activa</p></div>
                             </div>`;
                     }
                 });
             });
         }
-
-        // --- MÓDULO DE CREACIÓN ---
-        window.previewCreateImg = (input) => {
-            if (!input.files[0]) return;
-            const reader = new FileReader();
-            reader.onload = e => {
-                window.userAvatarData = e.target.result;
-                const prev = document.getElementById('c-prev');
-                prev.src = e.target.result;
-                prev.classList.remove('hidden');
-            };
-            reader.readAsDataURL(input.files[0]);
-        };
-
-        window.crearPersonajeUsuario = async () => {
-            if (isAnon) {
-                alert("Por favor, inicia sesión o regístrate para crear una nueva entidad en el multiverso.");
-                window.location.href = 'auth.html';
-                return;
-            }
-
-            const name = document.getElementById('c-name').value.trim();
-            const desc = document.getElementById('c-desc').value.trim();
-            const personalidad = document.getElementById('c-pers').value.trim();
-            const physicalPrompt = document.getElementById('c-physical').value.trim();
-            const btn = document.getElementById('btn-create-char');
-
-            if (!name || !desc || !physicalPrompt) {
-                return alert("Por favor, completa Nombre, Apariencia detallada y Descripción para continuar.");
-            }
-
-            try {
-                btn.disabled = true;
-                btn.innerText = "Sincronizando con el Multiverso...";
-                let urlFinal = 'https://i.ibb.co/7C3982b/default.jpg';
-
-                if (window.userAvatarData) {
-                    const formData = new FormData();
-                    formData.append('image', window.userAvatarData.split(',')[1]);
-                    const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method: 'POST', body: formData });
-                    const data = await res.json();
-                    if (data.success) urlFinal = data.data.url;
-                }
-
-                const payload = {
-                    name,
-                    description: desc,
-                    category: 'anime', // O categoría seleccionada en tu formulario
-                    personalidad,
-                    physicalPrompt,
-                    videoUrl: "",
-                    image: urlFinal,
-                    createdAt: new Date()
-                };
-
-                await addDoc(collection(db, "personajes"), payload);
-                alert("¡Entidad guardada correctamente en la plataforma! ✨");
-                
-                // Limpiar formulario
-                document.getElementById('c-name').value = "";
-                document.getElementById('c-desc').value = "";
-                document.getElementById('c-physical').value = "";
-                document.getElementById('c-prev').src = "";
-                document.getElementById('c-prev').classList.add('hidden');
-                window.userAvatarData = null;
-                
-                toggleModo('home');
-            } catch (e) {
-                alert("Error al crear la entidad: " + e.message);
-            } finally {
-                btn.disabled = false;
-                btn.innerText = "Crear Personaje";
-            }
-        };
+        
+        // Exponer funciones necesarias al HTML
+        window.filtrarAlmas = aplicarFiltros;
     </script>
 </head>
 <body class="p-6 pb-40">
@@ -417,24 +225,19 @@ async function inicializarUsuarioInvitado(user) {
                 <h1 class="text-3xl font-black italic tracking-tighter leading-none uppercase">KOKORO<span class="text-yellow-500">.AI</span></h1>
                 <p class="text-[9px] text-slate-500 font-bold uppercase tracking-[0.3em] mt-1">Elite Virtual Companion</p>
             </div>
-            <button id="profile-btn" onclick="window.location.href='perfil.html'" class="w-12 h-12 glass-premium rounded-2xl flex items-center justify-center text-xl cursor-pointer">👤</button>
+            <button onclick="window.location.href='perfil.html'" class="w-12 h-12 glass-premium rounded-2xl flex items-center justify-center text-xl cursor-pointer">👤</button>
         </header>
 
         <div id="guest-banner" class="hidden bg-yellow-500/10 border border-yellow-500/30 p-4 rounded-3xl mb-8 flex items-center justify-between">
             <div class="flex items-center gap-3">
-                <div class="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
-                <div>
-                    <p class="text-[10px] font-black text-yellow-500 uppercase tracking-widest">Modo Invitado Activo</p>
-                    <p class="text-[9px] text-slate-400">Estás explorando sin cuenta. ¡Regístrate para conservar tu historial y memoria!</p>
-                </div>
+                <div class="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+                <p class="text-[9px] text-slate-300 font-medium">Modo Invitado: Registrate para guardar memoria infinita.</p>
             </div>
-            <button onclick="window.location.href='auth.html'" class="bg-yellow-500 text-black text-[8px] font-black uppercase px-4 py-2 rounded-xl shadow-lg shadow-yellow-500/10 active:scale-95 transition-all">
-                Regístrate
-            </button>
+            <button onclick="window.location.href='auth.html'" class="bg-yellow-500 text-black text-[8px] font-black uppercase px-3 py-2 rounded-xl">Unirme</button>
         </div>
 
         <div class="relative mb-8">
-            <input type="text" id="input-buscador" oninput="filtrarAlmas()" placeholder="Buscar por nombre o personalidad..." class="w-full bg-white/5 border border-white/10 p-5 rounded-full outline-none text-xs focus:border-yellow-500/50 transition-all italic text-white">
+            <input type="text" id="input-buscador" oninput="filtrarAlmas()" placeholder="Buscar por nombre o personalidad..." class="w-full bg-white/5 border border-white/10 p-5 rounded-full outline-none text-xs italic text-white focus:border-yellow-500/40">
         </div>
 
         <div id="seccion-recientes" class="mb-10 hidden">
@@ -443,9 +246,8 @@ async function inicializarUsuarioInvitado(user) {
         </div>
 
         <div class="flex gap-2 overflow-x-auto no-scrollbar pb-8">
-            <button onclick="cambiarCategoria('todos', this)" class="cat-pill cat-pill-active whitespace-nowrap px-6 py-3 rounded-full border border-white/10 text-[9px] font-black uppercase tracking-wider transition-all">Todos</button>
-            <button onclick="cambiarCategoria('anime', this)" class="cat-pill whitespace-nowrap px-6 py-3 rounded-full border border-white/10 bg-white/5 text-white/40 text-[9px] font-black uppercase tracking-wider transition-all">🌸 Anime</button>
-            <button onclick="cambiarCategoria('videojuegos', this)" class="cat-pill whitespace-nowrap px-6 py-3 rounded-full border border-white/10 bg-white/5 text-white/40 text-[9px] font-black uppercase tracking-wider transition-all">🎮 Gaming</button>
+            <button onclick="cambiarCategoria('todos', this)" class="cat-pill cat-pill-active whitespace-nowrap px-6 py-3 rounded-full border border-white/10 text-[9px] font-black uppercase tracking-wider">Todos</button>
+            <button onclick="cambiarCategoria('anime', this)" class="cat-pill whitespace-nowrap px-6 py-3 rounded-full border border-white/10 bg-white/5 text-white/40 text-[9px] font-black uppercase tracking-wider">🌸 Anime</button>
         </div>
 
         <div id="contenedor-ia" class="grid grid-cols-2 gap-4"></div>
@@ -454,59 +256,24 @@ async function inicializarUsuarioInvitado(user) {
     <div id="seccion-dating" class="hidden min-h-[70vh] flex flex-col items-center justify-center pt-4">
         <div class="text-center mb-8">
             <h2 class="text-2xl font-black italic uppercase tracking-tighter">Santuario <span class="text-yellow-500">Match</span></h2>
-            <p class="text-[9px] text-slate-500 font-bold uppercase tracking-[0.3em]">Desliza o usa el corazón</p>
+            <p class="text-[9px] text-slate-500 font-bold uppercase tracking-[0.3em]">Encuentra tu alma gemela</p>
         </div>
         <div id="dating-card-container" class="w-full flex justify-center px-4"></div>
     </div>
 
-    <div id="seccion-crear" class="hidden pt-4 animate-card max-w-lg mx-auto">
+    <div id="seccion-crear" class="hidden pt-4 max-w-lg mx-auto">
         <div class="text-center mb-8">
             <h2 class="text-2xl font-black italic uppercase tracking-tighter">Crear <span class="text-yellow-500">Waifu</span></h2>
-            <p class="text-[9px] text-slate-500 font-bold uppercase tracking-[0.3em]">Diseña y materializa a tu compañera ideal</p>
+            <p class="text-[9px] text-slate-500 font-bold uppercase tracking-[0.3em]">Materializa una nueva entidad</p>
         </div>
-        
-        <div class="glass-premium p-6 sm:p-8 rounded-[2.5rem] border border-white/10 space-y-5">
-            <div>
-                <label class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-2 block mb-1">Nombre</label>
-                <input type="text" id="c-name" placeholder="Ej: Aiko Elfa" class="w-full bg-black/40 border border-white/10 p-4 rounded-2xl text-white outline-none focus:border-yellow-500/50 text-xs">
-            </div>
-            
-            <div>
-                <label class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-2 block mb-1">Personalidad Base</label>
-                <select id="c-pers" class="w-full bg-black/40 border border-white/10 p-4 rounded-2xl text-white outline-none focus:border-yellow-500/50 text-xs">
-                    <option value="Amable">😊 Amable</option>
-                    <option value="Divertida">😂 Divertida</option>
-                    <option value="Gamer">🕹️ Gamer</option>
-                    <option value="Tsundere">💢 Tsundere</option>
-                    <option value="Romántica">❤️ Romántica</option>
-                    <option value="Seductora">😈 Seductora</option>
-                    <option value="Gótica">🖤 Gótica</option>
-                    <option value="Kuudere">🧊 Kuudere</option>
-                    <option value="Tímida">😳 Tímida</option>
-                </select>
-            </div>
-
-            <div>
-                <label class="text-[9px] font-bold text-yellow-500 uppercase tracking-widest ml-2 block mb-1">✨ Apariencia Detallada (Prompt Maestro para DALL-E 3)</label>
-                <textarea id="c-physical" placeholder="Ej: Chica anime, cabello rosa extralargo, ojos azules..." class="w-full bg-black/40 border border-yellow-500/20 p-4 rounded-2xl h-24 text-xs text-white outline-none focus:border-yellow-500/50"></textarea>
-            </div>
-            
-            <div>
-                <label class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-2 block mb-1">Instrucciones de Comportamiento (System Prompt)</label>
-                <textarea id="c-desc" placeholder="Describe cómo actúa y qué secretos guarda..." class="w-full bg-black/40 border border-white/10 p-4 rounded-2xl h-24 text-xs text-white outline-none focus:border-white/20"></textarea>
-            </div>
-
-            <div class="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-dashed border-white/10">
-                <button onclick="document.getElementById('c-file').click()" class="bg-slate-800 px-4 py-2 rounded-xl text-[8px] font-black uppercase text-white hover:bg-slate-700 transition cursor-pointer">Subir Avatar</button>
-                <img id="c-prev" src="" class="hidden w-12 h-12 rounded-xl object-cover border border-yellow-500">
-                <input type="file" id="c-file" class="hidden" accept="image/*" onchange="previewCreateImg(this)">
-            </div>
-
-            <button id="btn-create-char" onclick="crearPersonajeUsuario()" class="w-full bg-yellow-500 text-black font-black py-4 rounded-2xl uppercase text-xs shadow-lg shadow-yellow-500/10 active:scale-95 transition-all">Crear Personaje</button>
+        <div class="glass-premium p-6 rounded-[2.5rem] border border-white/10 space-y-4">
+             <input type="text" id="c-name" placeholder="Nombre" class="w-full bg-black/40 border border-white/10 p-4 rounded-2xl text-xs text-white">
+             <textarea id="c-physical" placeholder="Apariencia (DALL-E Prompt)" class="w-full bg-black/40 border border-yellow-500/20 p-4 rounded-2xl h-24 text-xs text-white"></textarea>
+             <button class="w-full bg-yellow-500 text-black font-black py-4 rounded-2xl uppercase text-xs">Crear Ahora</button>
         </div>
     </div>
 
-    <nav class="fixed bottom-10 inset-x-8 glass-premium rounded-[3rem] p-6 flex justify-around items-center z-[100] border border-white/10 shadow-2xl shadow-black">
+    <nav class="fixed bottom-10 inset-x-8 glass-premium rounded-[3rem] p-6 flex justify-around items-center z-[100] border border-white/10">
         <button id="btn-nav-home" onclick="toggleModo('home')" class="text-2xl text-yellow-500 transition-all duration-300 scale-110">🌌</button>
         <button id="btn-nav-dating" onclick="toggleModo('dating')" class="text-2xl opacity-30 transition-all duration-300">🔥</button>
         <button id="btn-nav-create" onclick="toggleModo('create')" class="text-2xl opacity-30 transition-all duration-300">✨</button>
@@ -514,4 +281,5 @@ async function inicializarUsuarioInvitado(user) {
     </nav>
 
 </body>
-</html>
+        </html>
+        
