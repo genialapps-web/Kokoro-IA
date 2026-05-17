@@ -23,16 +23,17 @@
         .chat-container { flex: 1; overflow-y: auto; background-size: cover; background-position: center; }
         ::-webkit-scrollbar { display: none; }
         
-        .barra-afinidad { width: 60px; height: 4px; background: rgba(255,255,255,0.1); rounded: 2px; overflow: hidden; }
+        .barra-afinidad { width: 60px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; }
         .barra-fill { height: 100%; width: 10%; background: #eab308; transition: width 0.5s ease; box-shadow: 0 0 10px #eab308; }
         
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fadeIn { animation: fadeIn 0.3s ease forwards; }
 
-        /* Estilos de animación para el modal inferior de información */
         .modal-sheet { transform: translateY(100%); transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
         .modal-sheet.active { transform: translateY(0); }
     </style>
+
+    <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.18.0.js"></script>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -54,6 +55,12 @@
 
         const OPENAI_KEY = ""; 
 
+        // Variables de Control de Agora RTC y Temporizador
+        let agoraClient = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+        let localAudioTrack = null;
+        let tiempoRestante = 300; 
+        let intervaloTimer = null;
+
         async function getOpenAiKey() {
             try {
                 const docSnap = await getDoc(doc(db, "config", "openai"));
@@ -61,7 +68,7 @@
                     return docSnap.data().key;
                 }
             } catch (e) {
-                console.error("Error al obtener la API Key de Firebase", e);
+                console.error("Error al obtener la API Key", e);
             }
             return OPENAI_KEY;
         }
@@ -133,12 +140,11 @@
                 document.getElementById('ia-name').innerText = personajeData.name;
                 document.getElementById('ia-img').src = personajeData.image;
                 
-                // Cargar datos en el modal de ficha técnica
                 document.getElementById('info-avatar').src = personajeData.image;
                 document.getElementById('info-name').innerText = personajeData.name;
                 document.getElementById('info-caracter').innerText = personajeData.personalidad || "Elite Companion";
                 document.getElementById('info-origen').innerText = personajeData.origen || personajeData.category || "Multiverso AI";
-                document.getElementById('info-descripcion').innerText = personajeData.description || "Sin descripción adicional registrada en la memoria central.";
+                document.getElementById('info-descripcion').innerText = personajeData.description || "Sin descripción central.";
 
                 const chatBox = document.getElementById('chat-box');
                 chatBox.style.backgroundImage = `linear-gradient(to bottom, rgba(0,0,0,0.6), rgba(0,0,0,0.85)), url('${personajeData.image}')`;
@@ -214,17 +220,14 @@
 
             const userRef = doc(db, "usuarios", userUID);
             const userSnap = await getDoc(userRef);
-
             if (!userSnap.exists()) return;
 
             const uData = userSnap.data();
-
             if (!uData.isPremium) {
                 const freeMsgs = uData.freeMessages || 0;
                 const coins = uData.coins || 0;
-
                 if (freeMsgs === 0 && coins === 0) {
-                    window.mostrarModalAnuncio();
+                    alert("¡Te has quedado sin tokens! Recarga en el Bazar central.");
                     return;
                 }
             }
@@ -247,12 +250,12 @@
                         } else if (transCoins >= 1) {
                             transaction.update(userRef, { coins: transCoins - 1 });
                         } else {
-                            throw new Error("¡No tienes mensajes gratuitos ni diamantes!");
+                            throw new Error("Sin fondos.");
                         }
                     }
                 });
             } catch (error) {
-                window.mostrarModalAnuncio();
+                alert("Tokens insuficientes.");
                 return;
             }
 
@@ -385,91 +388,106 @@
             procesarRespuestaIA(`[Te acabo de enviar un regalo especial: ${nombre} ${icon}]`);
         };
 
-        // CONTROLES DE LA HOJA DE INFORMACIÓN DEL PERSONAJE
-        window.toggleFichaInfo = (abrir) => {
-            const wrapper = document.getElementById('wrapper-modal-info');
-            const sheet = document.getElementById('sheet-modal-info');
-            if(abrir) {
-                wrapper.classList.remove('hidden');
-                setTimeout(() => sheet.classList.add('active'), 10);
+        // LÓGICA DE AGORA RTC & TEMPORIZADOR INTEGRADA
+        window.iniciarLlamada = async () => {
+            if (!personajeData) return;
+
+            document.getElementById('llamada-nombre').innerText = personajeData.name;
+            document.getElementById('llamada-avatar').src = personajeData.image;
+            
+            const bgContainer = document.getElementById('llamada-bg-container');
+            if (personajeData.bgType === 'video') {
+                bgContainer.innerHTML = `<video src="${personajeData.image}" muted autoplay loop class="w-full h-full object-cover"></video>`;
             } else {
-                sheet.classList.remove('active');
-                setTimeout(() => wrapper.classList.add('hidden'), 400);
+                bgContainer.innerHTML = `<img src="${personajeData.image}" class="w-full h-full object-cover">`;
+            }
+            
+            document.getElementById('pantalla-llamada').classList.remove('hidden');
+
+            try {
+                const configSnap = await getDoc(doc(db, "config", "openai"));
+                const agoraAppId = configSnap.exists() ? configSnap.data().agoraId : null;
+
+                if (!agoraAppId) {
+                    alert("Agora App ID no configurado en el panel de control.");
+                    return window.colgarLlamada();
+                }
+
+                const canal = personajeData.agoraChannel || personajeData.name.toLowerCase().replace(/\s+/g, '_');
+                await agoraClient.join(agoraAppId, canal, null, null);
+
+                localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+                await agoraClient.publish([localAudioTrack]);
+
+                document.getElementById('llamada-estado').innerText = "En llamada con IA";
+                document.getElementById('llamada-estado').classList.remove('animate-pulse');
+                document.getElementById('llamada-timer').classList.remove('hidden');
+                
+                iniciarContador();
+            } catch (err) {
+                console.error("Error Agora RTC:", err);
+                alert("No se pudo enlazar el canal de voz: " + err.message);
+                window.colgarLlamada();
             }
         };
 
-        window.mostrarModalAnuncio = () => document.getElementById('ad-modal').classList.remove('hidden');
-        window.cerrarModalAnuncio = () => document.getElementById('ad-modal').classList.add('hidden');
-        window.irAlBazar = () => window.location.href = 'bazar.html';
-        window.toggleRegalos = () => document.getElementById('gift-menu').classList.toggle('hidden');
-        
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('msg-input').addEventListener('keydown', (e) => {
-                if(e.key === 'Enter') window.enviarMensaje();
-            });
-        });
+        function iniciarContador() {
+            clearInterval(intervaloTimer);
+            actualizarTimerUI();
+            intervaloTimer = setInterval(() => {
+                tiempoRestante--;
+                actualizarTimerUI();
+                if (tiempoRestante <= 0) {
+                    clearInterval(intervaloTimer);
+                    alert("Llamada finalizada: Tiempo agotado.");
+                    window.colgarLlamada();
+                }
+            }, 1000);
+        }
+
+        function actualizarTimerUI() {
+            const minutos = Math.floor(tiempoRestante / 60).toString().padStart(2, '0');
+            const segundos = (tiempoRestante % 60).toString().padStart(2, '0');
+            document.getElementById('llamada-timer').innerText = `${minutos}:${segundos}`;
+        }
+
+        window.recargarTiempo = () => {
+            tiempoRestante += 300; 
+            actualizarTimerUI();
+            alert("¡Se han añadido 5 minutos extra a tu enlace actual!");
+        };
+
+        window.colgarLlamada = async () => {
+            clearInterval(intervaloTimer);
+            tiempoRestante = 300; 
+            
+            if (localAudioTrack) {
+                localAudioTrack.stop();
+                localAudioTrack.close();
+                localAudioTrack = null;
+            }
+            await agoraClient.leave();
+
+            document.getElementById('pantalla-llamada').classList.add('hidden');
+            document.getElementById('llamada-timer').classList.add('hidden');
+            document.getElementById('llamada-estado').innerText = "Conectando canales...";
+            document.getElementById('llamada-estado').classList.add('animate-pulse');
+        };
+
+        // UI Toggles Básicos
+        window.toggleRegalos = () => {
+            const menu = document.getElementById('gift-menu');
+            menu.classList.toggle('hidden');
+        };
+
+        window.toggleFichaInfo = (abrir) => {
+            const sheet = document.getElementById('ficha-tecnica');
+            if (abrir) sheet.classList.add('active');
+            else sheet.classList.remove('active');
+        };
     </script>
 </head>
-<body>
-
-    <div id="ad-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md z-[200] flex items-center justify-center p-6">
-        <div class="glass-premium w-full max-w-xs p-6 rounded-[2.5rem] text-center border border-white/10 animate-card">
-            <div class="flex justify-center mb-4">
-                <div class="bg-black p-3.5 rounded-full border border-yellow-500/20">
-                    <span class="text-xl">📺</span>
-                </div>
-            </div>
-            <h3 class="text-[11px] font-black text-yellow-500 uppercase tracking-widest mb-1.5">Santuario Vacío</h3>
-            <p class="text-[9px] text-white/50 max-w-[230px] mx-auto mb-6 leading-relaxed">
-                Has agotado tus transmisiones libres. Ve al Bazar para conseguir energía o Diamantes Elite.
-            </p>
-            <div id="ad-content" class="w-full space-y-2">
-                <button onclick="irAlBazar()" class="w-full bg-gradient-to-r from-yellow-500 to-amber-600 text-black font-black text-[9px] uppercase tracking-widest py-3.5 px-4 rounded-xl shadow-lg shadow-yellow-500/20 active:scale-95 transition-all">
-                    Ir al Bazar
-                </button>
-                <button onclick="cerrarModalAnuncio()" class="w-full bg-white/5 text-[9px] font-black tracking-widest py-3 rounded-xl text-white/40 uppercase">
-                    Cerrar
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <div id="wrapper-modal-info" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-[150] flex items-end transition-all duration-300">
-        <div class="absolute inset-0" onclick="toggleFichaInfo(false)"></div>
-        
-        <div id="sheet-modal-info" class="modal-sheet w-full glass-premium rounded-t-[3rem] border-t border-white/10 p-6 space-y-5 max-h-[85vh] overflow-y-auto relative z-10 flex flex-col items-center">
-            <div class="w-12 h-1 bg-white/20 rounded-full mb-2"></div>
-            
-            <div class="w-24 h-24 rounded-full overflow-hidden border-2 border-yellow-500 shadow-2xl shadow-yellow-500/10">
-                <img id="info-avatar" src="" class="w-full h-full object-cover">
-            </div>
-
-            <div class="text-center space-y-1 w-full">
-                <h3 id="info-name" class="text-2xl font-black italic uppercase tracking-tighter text-white">---</h3>
-                <p class="text-[8px] text-yellow-500 font-black uppercase tracking-[0.25em]">Entidad Conectada</p>
-            </div>
-
-            <div class="grid grid-cols-2 gap-3 w-full pt-2">
-                <div class="bg-black/40 border border-white/5 p-3 rounded-2xl">
-                    <span class="text-[7px] font-black uppercase text-slate-500 tracking-wider block mb-0.5">Carácter</span>
-                    <p id="info-caracter" class="text-[10px] font-bold uppercase text-white truncate">---</p>
-                </div>
-                <div class="bg-black/40 border border-white/5 p-3 rounded-2xl">
-                    <span class="text-[7px] font-black uppercase text-slate-500 tracking-wider block mb-0.5">Ubicación</span>
-                    <p id="info-origen" class="text-[10px] font-bold uppercase text-yellow-500 truncate">---</p>
-                </div>
-            </div>
-
-            <div class="w-full bg-black/40 border border-white/5 p-4 rounded-2xl space-y-1.5">
-                <span class="text-[7px] font-black uppercase text-slate-500 tracking-wider block">Lore & Trasfondo</span>
-                <p id="info-descripcion" class="text-xs text-white/70 leading-relaxed font-medium italic">---</p>
-            </div>
-
-            <button onclick="toggleFichaInfo(false)" class="w-full bg-white/5 py-3.5 rounded-xl text-[9px] font-black tracking-widest text-white/50 uppercase active:scale-95 transition-all">
-                Volver al Chat
-            </button>
-        </div>
-    </div>
+<body class="min-h-screen">
 
     <header class="glass-header flex items-center justify-between px-4 z-50">
         <div class="flex items-center gap-3">
@@ -487,6 +505,7 @@
         </div>
 
         <div class="flex items-center gap-2">
+            <button onclick="iniciarLlamada()" class="w-8 h-8 bg-green-500/10 text-green-400 rounded-lg flex items-center justify-center text-xs border border-green-500/20 active:scale-90 transition-all">📞</button>
             <button onclick="toggleFichaInfo(true)" class="w-8 h-8 glass-premium rounded-lg flex items-center justify-center text-xs active:scale-90 transition-all border border-white/10">ℹ️</button>
             
             <div class="bg-white/5 px-2.5 py-1 rounded-md border border-white/10 flex items-center">
@@ -507,7 +526,65 @@
         <span class="text-[8px] text-white/80 font-black tracking-widest uppercase ml-1">Sincronizando...</span>
     </div>
 
-    <div id="gift-menu" class="hidden fixed bottom-[84px] inset-x-4 z-[90] glass-premium p-4 rounded-[2rem] border border-white/10 shadow-2xl animate-card">
+    <div id="ficha-tecnica" class="modal-sheet fixed inset-x-0 bottom-0 z-[110] bg-slate-950/95 backdrop-blur-3xl rounded-t-[2.5rem] border-t border-white/10 p-6 flex flex-col gap-5 max-h-[85vh] overflow-y-auto">
+        <div class="w-12 h-1 bg-white/20 rounded-full mx-auto mb-2"></div>
+        <div class="flex flex-col items-center text-center gap-2">
+            <div class="w-24 h-24 rounded-3xl overflow-hidden border border-white/10 bg-black shadow-xl">
+                <img id="info-avatar" src="" class="w-full h-full object-cover">
+            </div>
+            <h3 id="info-name" class="text-lg font-black tracking-tight text-white uppercase mt-2">---</h3>
+            <span class="text-[7px] bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 px-3 py-1 rounded-full font-black uppercase tracking-widest">Santuario Verified</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+            <div class="bg-black/40 border border-white/5 p-3 rounded-2xl">
+                <span class="text-[7px] font-black uppercase text-slate-500 tracking-wider block mb-0.5">Personalidad</span>
+                <p id="info-caracter" class="text-[10px] font-bold uppercase text-white truncate">---</p>
+            </div>
+            <div class="bg-black/40 border border-white/5 p-3 rounded-2xl">
+                <span class="text-[7px] font-black uppercase text-slate-500 tracking-wider block mb-0.5">Origen</span>
+                <p id="info-origen" class="text-[10px] font-bold uppercase text-yellow-500 truncate">---</p>
+            </div>
+        </div>
+
+        <div class="w-full bg-black/40 border border-white/5 p-4 rounded-2xl space-y-1.5">
+            <span class="text-[7px] font-black uppercase text-slate-500 tracking-wider block">Lore & Trasfondo</span>
+            <p id="info-descripcion" class="text-xs text-white/70 leading-relaxed font-medium italic">---</p>
+        </div>
+
+        <button onclick="toggleFichaInfo(false)" class="w-full bg-white/5 py-3.5 rounded-xl text-[9px] font-black tracking-widest text-white/50 uppercase active:scale-95 transition-all">
+            Volver al Chat
+        </button>
+    </div>
+
+    <div id="pantalla-llamada" class="hidden fixed inset-0 z-[120] bg-slate-950 flex flex-col justify-between items-center p-8 animate-fadeIn">
+        <div id="llamada-bg-container" class="absolute inset-0 z-0 opacity-20 filter blur-xl scale-110 pointer-events-none"></div>
+        <div class="absolute inset-0 bg-gradient-to-b from-black/40 via-slate-950/80 to-black z-10 pointer-events-none"></div>
+
+        <div class="z-20 text-center mt-16 space-y-2">
+            <div class="w-28 h-28 mx-auto rounded-[2rem] overflow-hidden border-2 border-yellow-500/30 shadow-2xl bg-black">
+                <img id="llamada-avatar" src="" class="w-full h-full object-cover">
+            </div>
+            <h2 id="llamada-nombre" class="text-2xl font-black tracking-tight text-white mt-4">---</h2>
+            <p id="llamada-estado" class="text-xs text-yellow-500 font-bold tracking-widest uppercase animate-pulse">Conectando canales...</p>
+            <div id="llamada-timer" class="text-4xl font-mono font-bold text-white/90 pt-4 hidden">05:00</div>
+        </div>
+
+        <div class="z-20 w-full max-w-xs flex flex-col items-center gap-6 mb-12">
+            <div class="flex items-center justify-center gap-6 w-full">
+                <button onclick="recargarTiempo()" class="p-4 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 text-slate-300 transition flex flex-col items-center gap-1">
+                    <span class="text-lg">⏳</span>
+                    <span class="text-[9px] font-bold uppercase tracking-wider">Recargar</span>
+                </button>
+                
+                <button onclick="colgarLlamada()" class="p-6 bg-red-600 text-white rounded-[2rem] hover:bg-red-700 shadow-xl shadow-red-600/20 transition-all active:scale-95">
+                    <span class="text-xl font-bold">✕</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="gift-menu" class="hidden fixed bottom-[84px] inset-x-4 z-[90] glass-premium p-4 rounded-[2rem] border border-white/10 shadow-2xl">
         <div class="grid grid-cols-3 gap-3">
             <button onclick="enviarRegalo('Rosa', '🌹', 10)" class="p-3 bg-black/40 rounded-2xl flex flex-col items-center border border-white/5 active:scale-95 transition-all">
                 <span class="text-xl mb-1">🌹</span>
