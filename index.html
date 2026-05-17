@@ -6,7 +6,7 @@
     <title>Santuario AI | Elite Multiverse</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=400;600;700;800&display=swap" rel="stylesheet">
     
     <style>
         :root { --gold: #eab308; --dark-bg: #010206; }
@@ -23,7 +23,6 @@
         .cat-pill-active { background: var(--gold); color: black; box-shadow: 0 0 20px rgba(234, 179, 8, 0.3); }
         .no-scrollbar::-webkit-scrollbar { display: none; }
 
-        /* Efecto premium para historias */
         .story-ring { padding: 2px; background: linear-gradient(135deg, #eab308 0%, #facc15 50%, #ca8a04 100%); }
     </style>
 
@@ -49,16 +48,26 @@
         let categoriaActual = 'todos';
         let userUID = null;
 
-        // --- AUTH & PERSISTENCIA INMEDIATA ---
+        // --- AUTH & PERSISTENCIA REESTRUCTURADA ---
         setPersistence(auth, browserLocalPersistence).then(() => {
             onAuthStateChanged(auth, async (user) => {
+                // Prevenir que el login anónimo interfiera si el usuario está intentando ir a registrarse explicitamente
                 if (!user) {
-                    await signInAnonymously(auth);
+                    if (window.location.pathname.includes('auth.html')) return;
+                    try {
+                        await signInAnonymously(auth);
+                    } catch (error) {
+                        console.error("Error en inicio anónimo:", error);
+                    }
                 } else {
                     userUID = user.uid;
                     await verificarEInicializarUsuario(user);
+                    
+                    const guestBanner = document.getElementById('guest-banner');
                     if (user.isAnonymous) {
-                        document.getElementById('guest-banner')?.classList.remove('hidden');
+                        if (guestBanner) guestBanner.classList.remove('hidden');
+                    } else {
+                        if (guestBanner) guestBanner.classList.add('hidden');
                     }
                     initApp();
                 }
@@ -85,7 +94,6 @@
             cargarChatsActivos();
         }
 
-        // Optimización de carga reactiva inmediata
         function cargarPersonajesFlujoRapido() {
             const q = query(collection(db, "personajes"), orderBy("createdAt", "desc"));
             onSnapshot(q, (snapshot) => {
@@ -95,13 +103,12 @@
             });
         }
 
-        // --- RENDERIZADO DE HISTORIAS (ESTILO EMOCHI) ---
         function renderizarHistorias() {
             const contenedor = document.getElementById('contenedor-historias');
             if(!contenedor) return;
             contenedor.innerHTML = '';
             
-            personajesData.slice(0, 6).forEach(ia => {
+            personajesData.slice(0, 7).forEach(ia => {
                 contenedor.innerHTML += `
                     <div onclick="window.location.href='chat.html?id=${ia.id}&view=story'" class="flex flex-col items-center flex-shrink-0 cursor-pointer snap-center">
                         <div class="w-16 h-16 rounded-full story-ring p-[2px] mb-1.5 shadow-lg shadow-yellow-500/5">
@@ -114,11 +121,12 @@
             });
         }
 
-        // --- FILTRADO Y EXPLORACIÓN ---
         window.aplicarFiltros = () => {
             const term = document.getElementById('input-buscador').value.toLowerCase();
             const filtrados = personajesData.filter(ia => {
-                const matchesTerm = ia.name.toLowerCase().includes(term) || (ia.personalidad && ia.personalidad.toLowerCase().includes(term));
+                const matchesTerm = ia.name.toLowerCase().includes(term) || 
+                                    (ia.personalidad && ia.personalidad.toLowerCase().includes(term)) ||
+                                    (ia.category && ia.category.toLowerCase().includes(term));
                 const matchesCategory = categoriaActual === 'todos' || (ia.category && ia.category.toLowerCase() === categoriaActual.toLowerCase());
                 return matchesTerm && matchesCategory;
             });
@@ -186,11 +194,11 @@
             });
         }
 
-        // --- SISTEMA DE CREACIÓN ---
         window.crearNuevaEntidad = async () => {
             const name = document.getElementById('c-name').value.trim();
             const physical = document.getElementById('c-physical').value.trim();
             const personality = document.getElementById('c-personality').value.trim();
+            const category = document.getElementById('c-category').value;
             
             if(!name || !physical || !personality) return alert("Por favor completa los campos de tu Waifu.");
 
@@ -199,9 +207,9 @@
                     name: name,
                     physicalPrompt: physical,
                     personalidad: personality,
-                    description: `Entidad personalizada creada por el multiverso.`,
-                    image: "https://i.ibb.co/7C3982b/default.jpg", // Imagen por defecto transitoria
-                    category: "anime",
+                    description: `Entidad premium de la categoría ${category}.`,
+                    image: "https://i.ibb.co/7C3982b/default.jpg", 
+                    category: category,
                     createdAt: new Date()
                 });
                 
@@ -213,7 +221,6 @@
             } catch(e) { console.error(e); }
         };
 
-        // NAVEGACIÓN GLOBAL CORREGIDA
         window.toggleModo = (modo) => {
             const sections = ['vista-explorar', 'seccion-crear'];
             const buttons = ['btn-nav-home', 'btn-nav-create'];
@@ -229,6 +236,10 @@
                 document.getElementById('seccion-crear').classList.remove('hidden');
                 document.getElementById('btn-nav-create').classList.remove('opacity-30');
             }
+        };
+
+        window.irARegistro = () => {
+            window.location.href = 'auth.html';
         };
 
         window.filtrarAlmas = aplicarFiltros;
@@ -250,17 +261,16 @@
                 <div class="w-1.5 h-1.5 bg-yellow-500 rounded-full animate-pulse"></div>
                 <p class="text-[9px] text-slate-300 font-semibold uppercase tracking-wider">Modo Invitado</p>
             </div>
-            <button onclick="window.location.href='auth.html'" class="bg-yellow-500 text-black text-[8px] font-black uppercase px-3 py-1.5 rounded-lg">Registrarme</button>
+            <button onclick="irARegistro()" class="bg-yellow-500 text-black text-[8px] font-black uppercase px-3 py-1.5 rounded-lg active:scale-95 transition-all">Registrarme</button>
         </div>
 
         <div class="space-y-2">
             <h2 class="text-[9px] font-black uppercase text-slate-500 tracking-[0.3em] pl-1 italic">Historias Recientes</h2>
-            <div id="contenedor-historias" class="flex gap-4 overflow-x-auto no-scrollbar snap-x snap-mandatory py-1">
-                </div>
+            <div id="contenedor-historias" class="flex gap-4 overflow-x-auto no-scrollbar snap-x snap-mandatory py-1"></div>
         </div>
 
         <div class="relative">
-            <input type="text" id="input-buscador" oninput="filtrarAlmas()" placeholder="Buscar por nombre o rasgos..." class="w-full bg-white/5 border border-white/10 p-4.5 pl-6 rounded-full outline-none text-xs italic text-white focus:border-yellow-500/30 transition-all placeholder:text-white/20">
+            <input type="text" id="input-buscador" oninput="filtrarAlmas()" placeholder="Buscar por nombre, rasgos o tags..." class="w-full bg-white/5 border border-white/10 p-4.5 pl-6 rounded-full outline-none text-xs italic text-white focus:border-yellow-500/30 transition-all placeholder:text-white/20">
         </div>
 
         <div id="seccion-recientes" class="hidden space-y-3">
@@ -271,6 +281,10 @@
         <div class="flex gap-2 overflow-x-auto no-scrollbar py-1">
             <button onclick="cambiarCategoria('todos', this)" class="cat-pill cat-pill-active whitespace-nowrap px-5 py-2.5 rounded-full border border-white/5 text-[8px] font-black uppercase tracking-wider transition-all">Todos</button>
             <button onclick="cambiarCategoria('anime', this)" class="cat-pill whitespace-nowrap px-5 py-2.5 rounded-full border border-white/5 bg-white/5 text-white/40 text-[8px] font-black uppercase tracking-wider transition-all">🌸 Anime</button>
+            <button onclick="cambiarCategoria('gamer', this)" class="cat-pill whitespace-nowrap px-5 py-2.5 rounded-full border border-white/5 bg-white/5 text-white/40 text-[8px] font-black uppercase tracking-wider transition-all">🎮 Gamer</button>
+            <button onclick="cambiarCategoria('otaku', this)" class="cat-pill whitespace-nowrap px-5 py-2.5 rounded-full border border-white/5 bg-white/5 text-white/40 text-[8px] font-black uppercase tracking-wider transition-all">🍙 Otaku</button>
+            <button onclick="cambiarCategoria('cosplay', this)" class="cat-pill whitespace-nowrap px-5 py-2.5 rounded-full border border-white/5 bg-white/5 text-white/40 text-[8px] font-black uppercase tracking-wider transition-all">🦊 Cosplay</button>
+            <button onclick="cambiarCategoria('waifu', this)" class="cat-pill whitespace-nowrap px-5 py-2.5 rounded-full border border-white/5 bg-white/5 text-white/40 text-[8px] font-black uppercase tracking-wider transition-all">🪄 Waifu</button>
         </div>
 
         <div id="contenedor-ia" class="grid grid-cols-2 gap-4 pt-2"></div>
@@ -287,12 +301,22 @@
                  <input type="text" id="c-name" placeholder="Nombre de la Waifu..." class="w-full bg-black/40 border border-white/10 p-4 rounded-xl text-xs text-white placeholder:text-white/20 outline-none focus:border-yellow-500/30 transition-all">
              </div>
              <div>
+                 <label class="text-[8px] font-black uppercase tracking-widest text-slate-400 block mb-2 pl-1">Categoría Universo</label>
+                 <select id="c-category" class="w-full bg-black text-xs text-white border border-white/10 p-4 rounded-xl outline-none focus:border-yellow-500/30">
+                     <option value="anime">🌸 Anime</option>
+                     <option value="gamer">🎮 Gamer</option>
+                     <option value="otaku">🍙 Otaku</option>
+                     <option value="cosplay">🦊 Cosplay</option>
+                     <option value="waifu">🪄 Waifu</option>
+                 </select>
+             </div>
+             <div>
                  <label class="text-[8px] font-black uppercase tracking-widest text-slate-400 block mb-2 pl-1">Arquetipo Psicológico</label>
-                 <input type="text" id="c-personality" placeholder="Ej: Tsundere, coqueta, tímida..." class="w-full bg-black/40 border border-white/10 p-4 rounded-xl text-xs text-white placeholder:text-white/20 outline-none focus:border-yellow-500/30 transition-all">
+                 <input type="text" id="c-personality" placeholder="Ej: Tsundere, gamer tóxica, tímida..." class="w-full bg-black/40 border border-white/10 p-4 rounded-xl text-xs text-white placeholder:text-white/20 outline-none focus:border-yellow-500/30 transition-all">
              </div>
              <div>
                  <label class="text-[8px] font-black uppercase tracking-widest text-slate-400 block mb-2 pl-1">Rasgos Físicos (DALL-E Prompt)</label>
-                 <textarea id="c-physical" placeholder="Cabello blanco, ojos carmesí, estética cyberpunk..." class="w-full bg-black/40 border border-white/10 p-4 rounded-xl h-24 text-xs text-white placeholder:text-white/20 outline-none focus:border-yellow-500/30 transition-all resize-none"></textarea>
+                 <textarea id="c-physical" placeholder="Pelo rosa largo, audífonos de gato, estilo gamer retro..." class="w-full bg-black/40 border border-white/10 p-4 rounded-xl h-24 text-xs text-white placeholder:text-white/20 outline-none focus:border-yellow-500/30 transition-all resize-none"></textarea>
              </div>
              <button onclick="crearNuevaEntidad()" class="w-full bg-yellow-500 text-black font-black py-4 rounded-xl uppercase text-[10px] tracking-widest shadow-xl shadow-yellow-500/10 active:scale-[0.98] transition-all mt-2">Inspirar Entidad</button>
         </div>
@@ -306,3 +330,4 @@
 
 </body>
 </html>
+
