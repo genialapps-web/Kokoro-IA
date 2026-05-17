@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Sincronía | Kokoro AI</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=400;600;800&display=swap" rel="stylesheet">
     
     <style>
         body { 
@@ -28,6 +28,10 @@
         
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fadeIn { animation: fadeIn 0.3s ease forwards; }
+
+        /* Estilos de animación para el modal inferior de información */
+        .modal-sheet { transform: translateY(100%); transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+        .modal-sheet.active { transform: translateY(0); }
     </style>
 
     <script type="module">
@@ -48,7 +52,6 @@
         const db = getFirestore(app);
         const auth = getAuth(app);
 
-        // Clave de respaldo si no se encuentra en la base de datos
         const OPENAI_KEY = ""; 
 
         async function getOpenAiKey() {
@@ -130,6 +133,13 @@
                 document.getElementById('ia-name').innerText = personajeData.name;
                 document.getElementById('ia-img').src = personajeData.image;
                 
+                // Cargar datos en el modal de ficha técnica
+                document.getElementById('info-avatar').src = personajeData.image;
+                document.getElementById('info-name').innerText = personajeData.name;
+                document.getElementById('info-caracter').innerText = personajeData.personalidad || "Elite Companion";
+                document.getElementById('info-origen').innerText = personajeData.origen || personajeData.category || "Multiverso AI";
+                document.getElementById('info-descripcion').innerText = personajeData.description || "Sin descripción adicional registrada en la memoria central.";
+
                 const chatBox = document.getElementById('chat-box');
                 chatBox.style.backgroundImage = `linear-gradient(to bottom, rgba(0,0,0,0.6), rgba(0,0,0,0.85)), url('${personajeData.image}')`;
                 escucharMensajes();
@@ -251,10 +261,7 @@
             try {
                 const msgPath = collection(db, "usuarios", userUID, "chats", characterId, "mensajes");
                 await addDoc(msgPath, { role: 'user', content: msg, createdAt: new Date() });
-                
-                // Actualizar lista global de chats activos del usuario para index.html
                 await setDoc(doc(db, "usuarios", userUID, "chats", characterId), { id: characterId, lastUpdate: new Date() }, { merge: true });
-                
                 procesarRespuestaIA(msg);
             } catch (e) { console.error(e); }
         };
@@ -378,12 +385,24 @@
             procesarRespuestaIA(`[Te acabo de enviar un regalo especial: ${nombre} ${icon}]`);
         };
 
+        // CONTROLES DE LA HOJA DE INFORMACIÓN DEL PERSONAJE
+        window.toggleFichaInfo = (abrir) => {
+            const wrapper = document.getElementById('wrapper-modal-info');
+            const sheet = document.getElementById('sheet-modal-info');
+            if(abrir) {
+                wrapper.classList.remove('hidden');
+                setTimeout(() => sheet.classList.add('active'), 10);
+            } else {
+                sheet.classList.remove('active');
+                setTimeout(() => wrapper.classList.add('hidden'), 400);
+            }
+        };
+
         window.mostrarModalAnuncio = () => document.getElementById('ad-modal').classList.remove('hidden');
         window.cerrarModalAnuncio = () => document.getElementById('ad-modal').classList.add('hidden');
         window.irAlBazar = () => window.location.href = 'bazar.html';
         window.toggleRegalos = () => document.getElementById('gift-menu').classList.toggle('hidden');
         
-        // Manejo del Enter en teclado
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('msg-input').addEventListener('keydown', (e) => {
                 if(e.key === 'Enter') window.enviarMensaje();
@@ -415,6 +434,43 @@
         </div>
     </div>
 
+    <div id="wrapper-modal-info" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-[150] flex items-end transition-all duration-300">
+        <div class="absolute inset-0" onclick="toggleFichaInfo(false)"></div>
+        
+        <div id="sheet-modal-info" class="modal-sheet w-full glass-premium rounded-t-[3rem] border-t border-white/10 p-6 space-y-5 max-h-[85vh] overflow-y-auto relative z-10 flex flex-col items-center">
+            <div class="w-12 h-1 bg-white/20 rounded-full mb-2"></div>
+            
+            <div class="w-24 h-24 rounded-full overflow-hidden border-2 border-yellow-500 shadow-2xl shadow-yellow-500/10">
+                <img id="info-avatar" src="" class="w-full h-full object-cover">
+            </div>
+
+            <div class="text-center space-y-1 w-full">
+                <h3 id="info-name" class="text-2xl font-black italic uppercase tracking-tighter text-white">---</h3>
+                <p class="text-[8px] text-yellow-500 font-black uppercase tracking-[0.25em]">Entidad Conectada</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 w-full pt-2">
+                <div class="bg-black/40 border border-white/5 p-3 rounded-2xl">
+                    <span class="text-[7px] font-black uppercase text-slate-500 tracking-wider block mb-0.5">Carácter</span>
+                    <p id="info-caracter" class="text-[10px] font-bold uppercase text-white truncate">---</p>
+                </div>
+                <div class="bg-black/40 border border-white/5 p-3 rounded-2xl">
+                    <span class="text-[7px] font-black uppercase text-slate-500 tracking-wider block mb-0.5">Ubicación</span>
+                    <p id="info-origen" class="text-[10px] font-bold uppercase text-yellow-500 truncate">---</p>
+                </div>
+            </div>
+
+            <div class="w-full bg-black/40 border border-white/5 p-4 rounded-2xl space-y-1.5">
+                <span class="text-[7px] font-black uppercase text-slate-500 tracking-wider block">Lore & Trasfondo</span>
+                <p id="info-descripcion" class="text-xs text-white/70 leading-relaxed font-medium italic">---</p>
+            </div>
+
+            <button onclick="toggleFichaInfo(false)" class="w-full bg-white/5 py-3.5 rounded-xl text-[9px] font-black tracking-widest text-white/50 uppercase active:scale-95 transition-all">
+                Volver al Chat
+            </button>
+        </div>
+    </div>
+
     <header class="glass-header flex items-center justify-between px-4 z-50">
         <div class="flex items-center gap-3">
             <button onclick="window.location.href='index.html'" class="text-white/60 hover:text-yellow-500 text-sm p-1">◀</button>
@@ -431,6 +487,8 @@
         </div>
 
         <div class="flex items-center gap-2">
+            <button onclick="toggleFichaInfo(true)" class="w-8 h-8 glass-premium rounded-lg flex items-center justify-center text-xs active:scale-90 transition-all border border-white/10">ℹ️</button>
+            
             <div class="bg-white/5 px-2.5 py-1 rounded-md border border-white/10 flex items-center">
                 <span class="text-[8px] text-white/60 uppercase font-bold" id="free-msg-counter">0 Libres</span>
             </div>
